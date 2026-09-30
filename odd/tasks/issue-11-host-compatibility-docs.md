@@ -35,4 +35,4 @@ Verification environment: Windows 11 + Git Bash, Node v24.18.0 (CI verifies on L
 
 ## Commits
 
-(none yet)
+- `82f9136` docs(hosts): document supported Agent Skills hosts and skill locations (branch `docs/issue-11-host-compatibility`)
