@@ -45,3 +45,4 @@ Report platform, detected state, approvals granted or declined, mutations perfor
 - [Platform matrix](references/platform-matrix.md)
 - [Guided install](references/guided-install.md)
 - [Verification and recovery](references/verification-and-recovery.md)
+- [Agent hosts](references/agent-hosts.md)

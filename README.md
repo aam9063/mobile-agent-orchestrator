@@ -68,7 +68,7 @@ The guided workflow discovers its runtime state before proposing changes. It ins
 
 ### Agent Skills-compatible CLIs
 
-Copy or link `skills/mobile-agent-orchestrator/` as `mobile-agent-orchestrator/` under one of the host's supported skill roots. The generic contract is one directory per skill containing a `SKILL.md`; references remain relative to that file. The host discovers and activates the skill, but host-specific persistence, lifecycle, and slash-command behavior must not be inferred from this repository.
+Copy or link `skills/mobile-agent-orchestrator/` as `mobile-agent-orchestrator/` under one of the host's supported skill roots. The generic contract is one directory per skill containing a `SKILL.md`; references remain relative to that file. The host discovers and activates the skill, but host-specific persistence, lifecycle, and slash-command behavior must not be inferred from this repository. The [agent-hosts reference][agent-hosts] records each supported host's documented skill locations and session-resume boundary, with unverified behavior marked as unverified.
 
 For OpenCode, use any supported location:
 
@@ -208,6 +208,7 @@ Distributed under the [MIT License][license].
 [platform-matrix]: skills/mobile-agent-orchestrator/references/platform-matrix.md
 [guided-install]: skills/mobile-agent-orchestrator/references/guided-install.md
 [verification-recovery]: skills/mobile-agent-orchestrator/references/verification-and-recovery.md
+[agent-hosts]: skills/mobile-agent-orchestrator/references/agent-hosts.md
 [contributing]: CONTRIBUTING.md
 [release-guide]: docs/RELEASE.md
 [security]: SECURITY.md
