@@ -8,7 +8,7 @@ This skill is one canonical Agent Skill directory (`SKILL.md` plus on-demand ref
 
 | Host | Project scope | User scope | Source |
 | --- | --- | --- | --- |
-| Pi | `skills/` or `pi.skills` array in the package manifest; Agent Skills roots `~/.agents/skills/` and `.agents/skills/` (project discovery walks ancestors up to the repository root) | `~/.agents/skills/`; additional directories via the `skills` setting in `settings.json` | Pi documentation, `pi install npm:...|git:...|./local` for package installs |
+| Pi | `.pi/skills/`; Agent Skills roots `~/.agents/skills/` and `.agents/skills/` (project discovery walks ancestors up to the repository root). The `skills/` directory or `pi.skills` array in `package.json` is package discovery for `pi install`, not a general project skill root | `~/.pi/agent/skills/` (default agent directory) and `~/.agents/skills/`; additional directories via the `skills` setting in `settings.json` | Pi documentation; `pi install npm:...|git:...|./local` for package installs |
 | Claude Code | `.claude/skills/<name>/SKILL.md` | `~/.claude/skills/<name>/SKILL.md` | Claude Code docs, "Skills" |
 | Codex CLI | `.agents/skills/` at the launch directory, parent directories, and the repository root | `$HOME/.agents/skills/` | Codex docs, "Agent Skills" |
 | Gemini CLI | `.gemini/skills/` with `.agents/skills/` as an interoperable alias | `~/.gemini/skills/` with `~/.agents/skills/` as an interoperable alias | Gemini CLI docs, "Agent Skills" |
@@ -22,7 +22,7 @@ All five hosts implement the open [Agent Skills specification](https://agentskil
 - **Claude Code.** Project skills load from `.claude/skills/` in the launch directory and every parent up to the repository root; nested skills activate when Claude works on files in their subtree. Symlinked skill folders are read from the symlink target. Personal skills in `~/.claude/skills/` do not load in Cowork or cloud sessions. Transcript-based resume uses `claude --continue` / `claude --resume`.
 - **Codex CLI.** Codex scans `.agents/skills` from the launch directory up to the repository root and reads `$HOME/.agents/skills` for user scope; it follows symlinked skill folders. Skills sharing a name are not merged; both appear in selectors. Session resume uses `codex resume`.
 - **Gemini CLI.** User skills load from `~/.gemini/skills/` or the `~/.agents/skills/` alias; workspace skills from `.gemini/skills/` or the `.agents/skills/` alias. Within a tier, the `.agents/skills/` alias takes precedence. Session resume uses `gemini --resume` or the `/resume` session browser.
-- **OpenCode.** Project-local paths are discovered by walking up from the working directory to the git worktree root across `.opencode/skills/`, `.claude/skills/`, and `.agents/skills/`; global paths load from the three user roots above. Session resume uses `--continue` (last session), `--session <id>`, or `--fork`.
+- **OpenCode.** Project-local paths are discovered by walking up from the working directory to the git worktree root across `.opencode/skills/`, `.claude/skills/`, and `.agents/skills/`; global paths load from the three user roots above. Session resume uses `--continue` (last session) or `--session <id>`; `--fork` branches a resumed session and must be combined with one of those (for example `--continue --fork`).
 
 ## Session persistence boundary
 
