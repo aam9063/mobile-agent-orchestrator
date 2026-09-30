@@ -36,3 +36,4 @@ Verification environment: Windows 11 + Git Bash, Node v24.18.0 (CI verifies on L
 ## Commits
 
 - `82f9136` docs(hosts): document supported Agent Skills hosts and skill locations (branch `docs/issue-11-host-compatibility`)
+- Review round 1 (maintainer): corrected Pi skill roots (`.pi/skills/` project, `~/.pi/agent/skills/` user per Pi v0.99.1 `docs/configuration.md`; `skills/`/`pi.skills` clarified as package discovery) and OpenCode `--fork` presented as a modifier of `--continue`/`--session` → `a8caff3`
