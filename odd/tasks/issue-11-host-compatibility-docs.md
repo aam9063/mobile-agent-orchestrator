@@ -18,7 +18,7 @@ documentation.
 - [x] Link the reference from canonical `SKILL.md` and `README.md`
 - [x] Keep Pi JSONL resume behavior explicitly Pi-specific; mark unverified behavior as unverified
 - [x] Distinguish Herdr process persistence from agent conversation recovery
-- [x] `npm test` and `npm run pack:check` pass
+- [x] `npm test` and `npm run pack:check` pass — verified on Linux: maintainer snapshot of `66df0e0` reported package validation, 15/15 tests, and `pack:check` (8 entries) all passing. Local Windows verification passes `pack:check` and every validator check except the pre-existing `spawnSync npm` limitation; see Evidence for the Windows-only details.
 - [x] Work-unit commit(s) recorded below
 
 ## Evidence
