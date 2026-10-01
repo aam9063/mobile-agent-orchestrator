@@ -8,7 +8,7 @@ This skill is one canonical Agent Skill directory (`SKILL.md` plus on-demand ref
 
 | Host | Project scope | User scope | Source |
 | --- | --- | --- | --- |
-| Pi | `.pi/skills/`; Agent Skills roots `~/.agents/skills/` and `.agents/skills/` (project discovery walks ancestors up to the repository root). The `skills/` directory or `pi.skills` array in `package.json` is package discovery for `pi install`, not a general project skill root | `~/.pi/agent/skills/` (default agent directory) and `~/.agents/skills/`; additional directories via the `skills` setting in `settings.json` | Pi documentation; `pi install npm:...|git:...|./local` for package installs |
+| Pi | `.pi/skills/`; Agent Skills root `.agents/skills/` (project discovery walks ancestors up to the repository root). The `skills/` directory or `pi.skills` array in `package.json` is package discovery for `pi install`, not a general project skill root | `~/.pi/agent/skills/` (default agent directory) and `~/.agents/skills/`; additional directories via the `skills` setting in `settings.json` | Pi documentation; `pi install npm:...|git:...|./local` for package installs |
 | Claude Code | `.claude/skills/<name>/SKILL.md` | `~/.claude/skills/<name>/SKILL.md` | Claude Code docs, "Skills" |
 | Codex CLI | `.agents/skills/` at the launch directory, parent directories, and the repository root | `$HOME/.agents/skills/` | Codex docs, "Agent Skills" |
 | Gemini CLI | `.gemini/skills/` with `.agents/skills/` as an interoperable alias | `~/.gemini/skills/` with `~/.agents/skills/` as an interoperable alias | Gemini CLI docs, "Agent Skills" |
