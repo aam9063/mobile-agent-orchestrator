@@ -78,6 +78,16 @@ For OpenCode, use any supported location:
 
 Start OpenCode from the relevant project and use its discovered-skill interface or a matching natural-language request. OpenCode may disable external skill directories through configuration; configured skill paths remain the explicit fallback. This is an Agent Skill, not an MCP server, and requires no MCP implementation.
 
+#### Installer
+
+For Codex, OpenCode, and Gemini CLI, the package ships a deterministic installer:
+
+```bash
+npx mobile-agent-orchestrator install --target codex --target opencode --target gemini --scope user
+```
+
+All three targets resolve the same shared `.agents/skills` location (`--scope user` installs to `~/.agents/skills`, `--scope project` to `<cwd>/.agents/skills`), so repeated targets deduplicate into a single copy. Use `--dry-run` to print the exact plan first. The installer records a checksum manifest beside the skill directory and aborts without writing anything when the destination contains modified or unmanaged content.
+
 ### Pi
 
 #### Recommended: install stable v0.1.0 from Git

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const canonicalSkillRoot = "skills/mobile-agent-orchestrator/";
 export const canonicalSkillPath = "skills/mobile-agent-orchestrator/SKILL.md";
-export const publishedTopLevelPaths = ["LICENSE", "README.md", "package.json", "skills/"];
+export const publishedTopLevelPaths = ["LICENSE", "README.md", "package.json", "skills/", "bin/", "lib/"];
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const requiredSections = [
   "Activation Contract",
@@ -245,6 +245,8 @@ export function discoverPackageInventory(packageRoot = root, readDirectory = rea
   return publishedTopLevelPaths.flatMap((path) => {
     if (!path.endsWith("/")) return [path];
     if (path === "skills/") return skillFiles;
+    // npm pack omits missing directories from `files`, so absent paths contribute nothing.
+    if (!existsSync(resolve(packageRoot, path))) return [];
     return walk(resolve(packageRoot, path), () => true, readDirectory)
       .map((filePath) => toPackagePath(relative(packageRoot, filePath)))
       .sort();
@@ -399,8 +401,9 @@ function validatePackage() {
     if (normalizedRepository !== expectedRepository) fail(`package.json repository must be ${expectedRepository}.`);
     if (packageJson.homepage !== expectedRepository) fail(`package.json homepage must be ${expectedRepository}.`);
     if (packageJson.bugs?.url !== `${expectedRepository}/issues`) fail(`package.json bugs.url must be ${expectedRepository}/issues.`);
-    if (!Array.isArray(packageJson.files) || packageJson.files.length !== 1 || packageJson.files[0] !== "skills/") {
-      fail('package.json files must allowlist only "skills/".');
+    const expectedFiles = ["skills/", "bin/", "lib/"];
+    if (!Array.isArray(packageJson.files) || packageJson.files.length !== expectedFiles.length || expectedFiles.some((entry, index) => packageJson.files[index] !== entry)) {
+      fail('package.json files must allowlist exactly "skills/", "bin/", and "lib/".');
     }
     const requiredKeywords = ["pi-package", "pi-skill", "mobile-agent", "tailscale", "mosh"];
     if (!Array.isArray(packageJson.keywords) || requiredKeywords.some((keyword) => !packageJson.keywords.includes(keyword))) {
