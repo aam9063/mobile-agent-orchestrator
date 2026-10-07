@@ -13,8 +13,13 @@
   "bugs": {
     "url": "https://github.com/egdev6/mobile-agent-orchestrator/issues"
   },
+  "bin": {
+    "mobile-agent-orchestrator": "bin/mobile-agent-orchestrator.mjs"
+  },
   "files": [
-    "skills/"
+    "skills/",
+    "bin/",
+    "lib/"
   ],
   "scripts": {
     "validate": "node scripts/validate-package.mjs",

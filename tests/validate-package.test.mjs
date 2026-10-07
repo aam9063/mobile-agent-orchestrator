@@ -78,7 +78,7 @@ test("discovers recursive skill files and enforces the publication boundary", ()
   assert.deepEqual(discoverPackageInventory(packageRoot), [
     "LICENSE", "README.md", "package.json", canonicalSkillPath, "skills/mobile-agent-orchestrator/references/nested/extra.md",
   ]);
-  assert.deepEqual(publishedTopLevelPaths, ["LICENSE", "README.md", "package.json", "skills/"]);
+  assert.deepEqual(publishedTopLevelPaths, ["LICENSE", "README.md", "package.json", "skills/", "bin/", "lib/"]);
   assert.throws(() => {
     writeFileSync(join(skillRoot, "references", "nested", "SKILL.md"), "");
     discoverPackageInventory(packageRoot);
@@ -87,20 +87,17 @@ test("discovers recursive skill files and enforces the publication boundary", ()
 
 test("expands recursively allowlisted non-skill directories", () => {
   const packageRoot = mkdtempSync(join(tmpdir(), "package-validation-"));
-  const originalPaths = [...publishedTopLevelPaths];
   try {
     const skillRoot = join(packageRoot, canonicalSkillRoot);
     mkdirSync(skillRoot, { recursive: true });
     writeFileSync(join(skillRoot, "SKILL.md"), "");
     mkdirSync(join(packageRoot, "bin"), { recursive: true });
     writeFileSync(join(packageRoot, "bin", "tool.js"), "");
-    publishedTopLevelPaths.push("bin/");
 
     assert.deepEqual(discoverPackageInventory(packageRoot), [
       "LICENSE", "README.md", "package.json", canonicalSkillPath, "bin/tool.js",
     ]);
   } finally {
-    publishedTopLevelPaths.splice(0, publishedTopLevelPaths.length, ...originalPaths);
     rmSync(packageRoot, { recursive: true, force: true });
   }
 });
