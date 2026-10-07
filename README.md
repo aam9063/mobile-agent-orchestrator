@@ -86,7 +86,7 @@ For Codex, OpenCode, and Gemini CLI, the package ships a deterministic installer
 npx mobile-agent-orchestrator install --target codex --target opencode --target gemini --scope user
 ```
 
-All three targets resolve the same shared `.agents/skills` location (`--scope user` installs to `~/.agents/skills`, `--scope project` to `<cwd>/.agents/skills`), so repeated targets deduplicate into a single copy. Use `--dry-run` to print the exact plan first. The installer records a checksum manifest beside the skill directory and aborts without writing anything when the destination contains modified or unmanaged content.
+All three targets resolve the same shared `.agents/skills` location (`--scope user` installs to `~/.agents/skills`, `--scope project` to `<cwd>/.agents/skills`), so repeated targets deduplicate into a single copy. Use `--dry-run` to print the exact plan first. The installer records a checksum manifest beside the skill directory and aborts without writing anything when the destination contains modified or unmanaged content. On upgrade it removes files that earlier versions managed and the package no longer ships, but only when their checksum still matches the previous manifest; modified, unmanaged, or symlinked content still aborts the install. A manifest that is a symlink or not a regular file is rejected before any write, and the manifest is published atomically so an interrupted run leaves the previous manifest valid.
 
 ### Pi
 
