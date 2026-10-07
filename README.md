@@ -80,13 +80,13 @@ Start OpenCode from the relevant project and use its discovered-skill interface 
 
 #### Installer
 
-For Codex, OpenCode, and Gemini CLI, the package ships a deterministic installer:
+For Codex, OpenCode, Gemini CLI, and Claude Code, the package ships a deterministic installer:
 
 ```bash
-npx mobile-agent-orchestrator install --target codex --target opencode --target gemini --scope user
+npx mobile-agent-orchestrator install --target codex --target opencode --target gemini --target claude-code --scope user
 ```
 
-All three targets resolve the same shared `.agents/skills` location (`--scope user` installs to `~/.agents/skills`, `--scope project` to `<cwd>/.agents/skills`), so repeated targets deduplicate into a single copy. Use `--dry-run` to print the exact plan first. The installer records a checksum manifest beside the skill directory and aborts without writing anything when the destination contains modified or unmanaged content. On upgrade it removes files that earlier versions managed and the package no longer ships, but only when their checksum still matches the previous manifest; modified, unmanaged, or symlinked content still aborts the install. A manifest that is a symlink or not a regular file is rejected before any write, and the manifest is published atomically so an interrupted run leaves the previous manifest valid.
+Codex, OpenCode, and Gemini CLI resolve the same shared `.agents/skills` location (`--scope user` installs to `~/.agents/skills`, `--scope project` to `<cwd>/.agents/skills`), so those repeated targets deduplicate into a single copy. `--target claude-code` resolves the documented Claude Code locations instead (`~/.claude/skills` for user scope, `<cwd>/.claude/skills` for project scope), which are a separate destination from the shared `.agents/skills` location: selecting `claude-code` together with the other targets produces an additional copy in `.claude/skills` with its own manifest beside the skill directory. Use `--dry-run` to print the exact plan first. The installer records a checksum manifest beside the skill directory and aborts without writing anything when the destination contains modified or unmanaged content. On upgrade it removes files that earlier versions managed and the package no longer ships, but only when their checksum still matches the previous manifest; modified, unmanaged, or symlinked content still aborts the install. A manifest that is a symlink or not a regular file is rejected before any write, and the manifest is published atomically so an interrupted run leaves the previous manifest valid.
 
 ### Pi
 

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
-import { resolveDestination, resolveUniqueDestinations, targets } from "../lib/hosts.mjs";
+import { resolveDestination, resolveUniqueDestinations } from "../lib/hosts.mjs";
 import { buildPlan, discoverPackageFiles, executePlan, MANIFEST_NAME, sha256 } from "../lib/installer.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -143,21 +143,145 @@ test("dry run writes nothing", (t) => {
   assert.equal(readFileSync(environment.manifestPath, "utf8"), manifestBefore);
 });
 
-test("selecting all three targets yields one destination and one manifest", (t) => {
+test("selecting the three shared-location targets yields one destination and one manifest", (t) => {
   const environment = makeEnvironment();
   t.after(() => rmSync(environment.root, { recursive: true, force: true }));
 
+  const sharedTargets = ["codex", "opencode", "gemini"];
   assert.deepEqual(
-    resolveUniqueDestinations(targets, "user", { cwd: environment.cwd, home: environment.home }).map((entry) => entry.destination),
+    resolveUniqueDestinations(sharedTargets, "user", { cwd: environment.cwd, home: environment.home }).map((entry) => entry.destination),
     [environment.destination],
   );
 
-  const { plan, result } = install(environment, { targets });
+  const { plan, result } = install(environment, { targets: sharedTargets });
   assert.equal(plan.destinations.length, 1);
   assert.deepEqual(plan.destinations[0].targets, ["codex", "opencode", "gemini"]);
   assert.equal(result.status, "installed");
   assert.ok(existsSync(environment.manifestPath));
   assert.equal(result.writtenFiles.filter((path) => path.endsWith(MANIFEST_NAME)).length, 1);
+});
+
+test("selecting all targets yields two destinations and two manifests", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+  const allTargets = ["codex", "opencode", "gemini", "claude-code"];
+
+  const unique = resolveUniqueDestinations(allTargets, "user", { cwd: environment.cwd, home: environment.home });
+  assert.deepEqual(
+    unique.map((entry) => entry.destination),
+    [
+      environment.destination,
+      join(environment.home, ".claude", "skills", "mobile-agent-orchestrator"),
+    ],
+  );
+
+  const dryRun = install(environment, { targets: allTargets, dryRun: true });
+  assert.equal(dryRun.result.status, "installed");
+  assert.deepEqual(dryRun.result.writtenFiles, []);
+  assert.ok(!existsSync(join(environment.home, ".claude")));
+  assert.ok(!existsSync(join(environment.home, ".agents")));
+
+  const { plan, result } = install(environment, { targets: allTargets });
+  assert.equal(plan.destinations.length, 2);
+  const agents = plan.destinations.find((entry) => entry.destination === environment.destination);
+  const claude = plan.destinations.find((entry) => entry.destination !== environment.destination);
+  assert.deepEqual(agents.targets, ["codex", "opencode", "gemini"]);
+  assert.deepEqual(claude.targets, ["claude-code"]);
+  assert.equal(result.status, "installed");
+  assert.equal(result.writtenFiles.filter((path) => path.endsWith(MANIFEST_NAME)).length, 2);
+});
+
+test("claude-code clean install copies SKILL.md and every discovered reference", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+  const destination = join(environment.home, ".claude", "skills", "mobile-agent-orchestrator");
+
+  const { result } = install(environment, { targets: ["claude-code"] });
+  assert.equal(result.status, "installed");
+  assert.equal(result.writtenFiles.length, canonicalFiles.length + 1);
+  for (const file of canonicalFiles) {
+    const installedPath = join(destination, ...file.path.split("/"));
+    assert.ok(existsSync(installedPath), `missing installed file: ${file.path}`);
+    assert.equal(readFileSync(installedPath, "utf8"), readFileSync(file.source, "utf8"));
+    assert.ok(result.writtenFiles.includes(installedPath));
+  }
+});
+
+test("claude-code manifest is written beside the skill directory with version and checksums", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+  const destination = join(environment.home, ".claude", "skills", "mobile-agent-orchestrator");
+  const manifestPath = join(environment.home, ".claude", "skills", MANIFEST_NAME);
+
+  install(environment, { targets: ["claude-code"] });
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  assert.equal(manifest.installerVersion, installerVersion);
+  assert.deepEqual(
+    manifest.files.map((file) => file.path),
+    canonicalFiles.map((file) => file.path),
+  );
+  for (const file of manifest.files) {
+    const source = canonicalFiles.find((candidate) => candidate.path === file.path).source;
+    assert.equal(file.sha256, sha256(readFileSync(source)));
+  }
+  assert.ok(existsSync(join(destination, "SKILL.md")));
+});
+
+test("claude-code reinstalling identical content is an up-to-date no-op", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+  const destination = join(environment.home, ".claude", "skills", "mobile-agent-orchestrator");
+  const manifestPath = join(environment.home, ".claude", "skills", MANIFEST_NAME);
+
+  install(environment, { targets: ["claude-code"] });
+  const skillBefore = readFileSync(join(destination, "SKILL.md"), "utf8");
+  const manifestBefore = readFileSync(manifestPath, "utf8");
+
+  const { result } = install(environment, { targets: ["claude-code"] });
+  assert.equal(result.status, "up-to-date");
+  assert.deepEqual(result.writtenFiles, []);
+  assert.equal(readFileSync(join(destination, "SKILL.md"), "utf8"), skillBefore);
+  assert.equal(readFileSync(manifestPath, "utf8"), manifestBefore);
+});
+
+test("claude-code reinstalling over a locally modified file aborts without writing", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+  const destination = join(environment.home, ".claude", "skills", "mobile-agent-orchestrator");
+  const manifestPath = join(environment.home, ".claude", "skills", MANIFEST_NAME);
+
+  install(environment, { targets: ["claude-code"] });
+  const modifiedSkillPath = join(destination, "SKILL.md");
+  writeFileSync(modifiedSkillPath, `${readFileSync(modifiedSkillPath, "utf8")}\nlocal edit\n`);
+  const manifestBefore = readFileSync(manifestPath, "utf8");
+
+  const { result } = install(environment, { targets: ["claude-code"] });
+  assert.equal(result.status, "aborted");
+  assert.deepEqual(result.writtenFiles, []);
+  assert.ok(result.conflicts.includes("SKILL.md (modified)"));
+  assert.match(readFileSync(modifiedSkillPath, "utf8"), /local edit/);
+  assert.equal(readFileSync(manifestPath, "utf8"), manifestBefore);
+});
+
+test("claude-code dry run writes nothing", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+  const destination = join(environment.home, ".claude", "skills", "mobile-agent-orchestrator");
+  const manifestPath = join(environment.home, ".claude", "skills", MANIFEST_NAME);
+
+  const { plan, result } = install(environment, { targets: ["claude-code"], dryRun: true });
+  assert.equal(result.status, "installed");
+  assert.deepEqual(result.writtenFiles, []);
+  assert.equal(plan.destinations[0].destination, destination);
+  assert.ok(plan.destinations[0].files.every((file) => file.action === "create"));
+  assert.ok(!existsSync(join(environment.home, ".claude")));
+
+  install(environment, { targets: ["claude-code"] });
+  const manifestBefore = readFileSync(manifestPath, "utf8");
+  const rerun = install(environment, { targets: ["claude-code"], dryRun: true });
+  assert.equal(rerun.result.status, "up-to-date");
+  assert.deepEqual(rerun.result.writtenFiles, []);
+  assert.equal(readFileSync(manifestPath, "utf8"), manifestBefore);
 });
 
 test("invalid target and invalid or missing scope fail with clear errors", () => {
@@ -183,6 +307,14 @@ test("destinations are built with path.join semantics for both scopes", (t) => {
   assert.equal(
     resolveDestination("gemini", "project", options),
     join(options.cwd, ".agents", "skills", "mobile-agent-orchestrator"),
+  );
+  assert.equal(
+    resolveDestination("claude-code", "user", options),
+    join(options.home, ".claude", "skills", "mobile-agent-orchestrator"),
+  );
+  assert.equal(
+    resolveDestination("claude-code", "project", options),
+    join(options.cwd, ".claude", "skills", "mobile-agent-orchestrator"),
   );
 });
 
