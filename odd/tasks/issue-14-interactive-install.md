@@ -60,7 +60,13 @@ asks the user which targets to configure. Explicit flags keep working for CI/aut
 
 ## Evidence log
 
-(filled per task below)
+(filled per task above)
+
+## Review round 1 (maintainer, PR #28)
+
+- P1 (blocking): stdin handle kept the process alive after the interactive flow (reproduced on Linux PTY: confirm, cancel, --dry-run, preselected --scope). Fix: `dispose()` on the prompt line reader and on bin's scope proxy (removeListener of exactly the attached data/end/error handlers, pending read settles as cancellation, guarded `pause()`/`unref()`), invoked via try/finally on every exit path; 5 open-input regression tests (stream never ended; assert zero residual listeners). Commit `1600d20`.
+- P3: PATH candidates via `existsSync()` matched directories; replaced with `isExecutableFile()` (statSync, regular file, POSIX exec bits `mode & 0o111`, win32 regular file); 3 new tests incl. directory-named-`codex` not detected; existing POSIX fixtures now chmod 0o755. Commit `da2136f`.
+- Suite at fix time: 85 tests, 75 pass, 2 pre-existing Windows detect-release fails, 8 skips (7 pre-existing + 1 capability-probed exec-bit test that runs on POSIX and skips on Windows hosts). Real-PTY hang fix verified by listener-count regression tests; manual POSIX PTY pass left to the maintainer.
 
 ## Verification (from issue)
 
