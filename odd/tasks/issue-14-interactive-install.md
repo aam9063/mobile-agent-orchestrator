@@ -69,3 +69,7 @@ npm test
 node bin/mobile-agent-orchestrator.mjs install --help
 node bin/mobile-agent-orchestrator.mjs install --target codex --dry-run
 ```
+
+## PR
+
+- PR #28 "feat(installer): interactive no-arguments install experience" opened by the user (gh unauthenticated; manual open). Closes #14. Label type:feature applied via sidebar by user.
