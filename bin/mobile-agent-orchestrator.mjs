@@ -141,11 +141,31 @@ function createScopePreselectedFlow(input, output, scopeAnswer) {
     tryDeliver();
     maybeEndSource();
   };
-  input.on("data", (chunk) => queueChunk(chunk.toString()));
+  const onData = (chunk) => queueChunk(chunk.toString());
+  input.on("data", onData);
   input.on("end", endInput);
   input.on("error", endInput);
 
-  return { input: source, output: outputProxy };
+  return {
+    input: source,
+    output: outputProxy,
+    /**
+     * Detach from the real input stream: remove every listener this flow attached and stop
+     * pumping it. selectInstallPlan disposes its own inner line reader (attached to `source`)
+     * in its finally, so this only needs to cover the listeners on the caller-supplied input;
+     * without it, listeners left on a terminal-backed stdin keep the process alive after the
+     * interactive flow completes.
+     */
+    dispose() {
+      input.removeListener("data", onData);
+      input.removeListener("end", endInput);
+      input.removeListener("error", endInput);
+      if (typeof input.pause === "function") input.pause();
+      // Unref-style cleanup only fires on real handle-backed streams (e.g. process.stdin);
+      // in-memory fixtures such as PassThrough/Readable have no unref and are unaffected.
+      if (typeof input.unref === "function") input.unref();
+    },
+  };
 }
 
 /**
@@ -208,8 +228,16 @@ export async function run(argv, options = {}) {
     const hosts = detect({ home });
     const flow = parsed.scope
       ? createScopePreselectedFlow(input, output, parsed.scope)
-      : { input, output };
-    const selection = await selectInstallPlan({ hosts, input: flow.input, output: flow.output });
+      : { input, output, dispose: null };
+    let selection;
+    try {
+      selection = await selectInstallPlan({ hosts, input: flow.input, output: flow.output });
+    } finally {
+      // Every exit path must release the real input stream. In the preselected case this
+      // removes the proxy's listeners; otherwise selectInstallPlan's own finally already
+      // disposed the line reader attached directly to the input.
+      if (typeof flow.dispose === "function") flow.dispose();
+    }
     if (selection === null) {
       output.write("Install cancelled; nothing was written.\n");
       return 0;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable, Writable } from "node:stream";
+import { PassThrough, Readable, Writable } from "node:stream";
 import { test } from "node:test";
 import { run } from "../bin/mobile-agent-orchestrator.mjs";
 
@@ -205,6 +205,106 @@ test("an explicit --scope with no --target is validated before any prompting", a
   assert.equal(exit, 1);
   assert.match(err.text(), /Unknown scope: root/);
   assert.doesNotMatch(out.text(), /Select targets/);
+});
+
+/**
+ * Open-ended stdin mock: a PassThrough that is never ended. The pre-fix code left its data/end/
+ * error listeners attached after the interactive flow, which keeps a real TTY-backed stdin
+ * handle alive; these tests assert run() resolves with the stream still open and no residual
+ * listeners.
+ */
+test("open-input run with preselected --scope resolves and leaves no stdin listeners", async (t) => {
+  const projectDir = makeTempDir("open-prescope");
+  t.after(() => rmSync(projectDir, { recursive: true, force: true }));
+  const out = makeOutput();
+  const input = new PassThrough();
+
+  const runPromise = run(["install", "--scope", "user"], {
+    input,
+    output: out.stream,
+    errorOutput: makeOutput().stream,
+    isTTY: true,
+    home: join(projectDir, "home"),
+    cwd: join(projectDir, "project"),
+    detect: () => makeHosts(),
+  });
+  input.write("1\n"); // target answer
+  input.write("y\n"); // confirm
+
+  const exit = await runPromise;
+
+  assert.equal(exit, 0);
+  const text = out.text();
+  assert.doesNotMatch(text, /Select scope/);
+  assert.match(text, /Installed for claude-code -> /);
+  // The stdin mock is still open and carries no residual listeners.
+  assert.equal(input.writableEnded, false);
+  assert.equal(input.readableEnded, false);
+  assert.equal(input.listenerCount("data"), 0);
+  assert.equal(input.listenerCount("end"), 0);
+  assert.equal(input.listenerCount("error"), 0);
+});
+
+test("open-input run without preselected scope resolves and leaves no stdin listeners", async (t) => {
+  const projectDir = makeTempDir("open-noscope");
+  t.after(() => rmSync(projectDir, { recursive: true, force: true }));
+  const out = makeOutput();
+  const input = new PassThrough();
+
+  const runPromise = run(["install"], {
+    input,
+    output: out.stream,
+    errorOutput: makeOutput().stream,
+    isTTY: true,
+    home: join(projectDir, "home"),
+    cwd: projectDir,
+    detect: () => makeHosts(),
+  });
+  input.write("1\n"); // target answer
+  input.write("2\n"); // scope answer
+  input.write("y\n"); // confirm
+
+  const exit = await runPromise;
+
+  assert.equal(exit, 0);
+  assert.match(out.text(), /Installed for claude-code -> /);
+  assert.equal(input.writableEnded, false);
+  assert.equal(input.readableEnded, false);
+  assert.equal(input.listenerCount("data"), 0);
+  assert.equal(input.listenerCount("end"), 0);
+  assert.equal(input.listenerCount("error"), 0);
+});
+
+test("open-input run cancelled at confirmation exits 0 with no residual stdin listeners", async (t) => {
+  const projectDir = makeTempDir("open-cancel");
+  t.after(() => rmSync(projectDir, { recursive: true, force: true }));
+  const out = makeOutput();
+  const input = new PassThrough();
+
+  const runPromise = run(["install"], {
+    input,
+    output: out.stream,
+    errorOutput: makeOutput().stream,
+    isTTY: true,
+    home: join(projectDir, "home"),
+    cwd: projectDir,
+    detect: () => makeHosts(),
+  });
+  input.write("1\n"); // target answer
+  input.write("2\n"); // scope answer
+  input.write("n\n"); // cancel at confirmation
+
+  const exit = await runPromise;
+
+  assert.equal(exit, 0);
+  assert.match(out.text(), /Install cancelled; nothing was written\./);
+  assert.equal(existsSync(join(projectDir, ".claude")), false);
+  assert.equal(existsSync(join(projectDir, ".agents")), false);
+  assert.equal(input.writableEnded, false);
+  assert.equal(input.readableEnded, false);
+  assert.equal(input.listenerCount("data"), 0);
+  assert.equal(input.listenerCount("end"), 0);
+  assert.equal(input.listenerCount("error"), 0);
 });
 
 test("--help exits 0 and documents both the explicit and interactive forms", async (t) => {

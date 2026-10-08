@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Readable, Writable } from "node:stream";
+import { PassThrough, Readable, Writable } from "node:stream";
 import { test } from "node:test";
 import { selectInstallPlan } from "../lib/prompt.mjs";
 
@@ -136,6 +136,54 @@ test("undetected host stays selectable and is rendered as not detected", async (
 
   assert.deepEqual(plan, { targets: ["gemini"], scope: "user" });
   assert.match(out.text(), /\[4\] gemini - not detected/);
+});
+
+/**
+ * Regression: the flow must fully detach from an input that stays open. The fixtures here are
+ * PassThrough streams that are NEVER ended (the old Readable.from fixtures reached EOF, which
+ * hid the lingering-listener bug that keeps a real TTY-backed stdin handle alive).
+ */
+test("open-input confirm: resolves while the stream stays open and leaves no listeners", async () => {
+  const hosts = makeHosts({ codex: "found in PATH" });
+  const input = new PassThrough();
+  const out = makeOutput();
+
+  const planPromise = selectInstallPlan({ hosts, input, output: out.stream });
+  input.write("1\n"); // target answer
+  input.write("2\n"); // scope answer
+  input.write("y\n"); // confirm
+
+  const plan = await planPromise;
+
+  assert.deepEqual(plan, { targets: ["claude-code"], scope: "project" });
+  // The stream was never ended by the fixture and must still be open after the flow.
+  assert.equal(input.writableEnded, false);
+  assert.equal(input.readableEnded, false);
+  // No residual listeners may keep a real stdin handle alive after the flow.
+  assert.equal(input.listenerCount("data"), 0);
+  assert.equal(input.listenerCount("end"), 0);
+  assert.equal(input.listenerCount("error"), 0);
+});
+
+test("open-input cancellation: resolves null while the stream stays open and leaves no listeners", async () => {
+  const hosts = makeHosts();
+  const input = new PassThrough();
+  const out = makeOutput();
+
+  const planPromise = selectInstallPlan({ hosts, input, output: out.stream });
+  input.write("1\n"); // target answer
+  input.write("2\n"); // scope answer
+  input.write("n\n"); // cancel at confirmation
+
+  const plan = await planPromise;
+
+  assert.equal(plan, null);
+  assert.match(out.text(), /Install plan/); // plan was rendered before cancellation
+  assert.equal(input.writableEnded, false);
+  assert.equal(input.readableEnded, false);
+  assert.equal(input.listenerCount("data"), 0);
+  assert.equal(input.listenerCount("end"), 0);
+  assert.equal(input.listenerCount("error"), 0);
 });
 
 test('"Yes" confirms case-insensitively; anything else cancels', async () => {
