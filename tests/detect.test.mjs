@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { test } from "node:test";
@@ -13,6 +13,17 @@ const HOST_ORDER = ["pi", "claude-code", "codex", "opencode", "gemini"];
 const isWindows = process.platform === "win32";
 const pathSeparator = isWindows ? ";" : ":";
 const fakeExecutable = (name) => (isWindows ? `${name}.cmd` : name);
+
+/**
+ * Write a regular file that qualifies as an executable on POSIX (owner/group/other exec bits).
+ * chmodSync is a no-op for exec bits on Windows (regular file + extension is enough there), but
+ * it is required on POSIX now that the PATH scan rejects non-executable files.
+ */
+function writeExecutable(directory, name) {
+  const path = join(directory, name);
+  writeFileSync(path, "");
+  chmodSync(path, 0o755);
+}
 
 function makeFixture() {
   const root = mkdtempSync(join(tmpdir(), "detect-test-"));
@@ -71,7 +82,13 @@ test("opencode is detected through its alternative ~/.opencode directory", (t) =
 
 test("detects extensionless executables in PATH on non-windows platforms", (t) => {
   const fixture = makePathFixture(t);
-  writeFileSync(join(fixture.bin, "codex"), "");
+  writeExecutable(fixture.bin, "codex");
+  // A Windows host cannot represent POSIX exec bits (chmod only toggles the read-only flag), so
+  // the exec-bit-qualified extensionless scan is only observable on POSIX hosts; the win32-mode
+  // positive is covered by "an executable regular file is still detected in PATH".
+  if ((statSync(join(fixture.bin, "codex")).mode & 0o111) === 0) {
+    return t.skip("host filesystem cannot represent POSIX executable bits");
+  }
   // Relative entry avoids the Windows drive colon, which a ":"-separated PATH would split.
   const pathEnv = relative(process.cwd(), fixture.bin);
 
@@ -113,7 +130,7 @@ test("PATH entries that do not exist or are files are skipped without throwing",
   const fileEntry = join(fixture.root, "not-a-directory");
   writeFileSync(fileEntry, "");
   const missing = join(fixture.root, "does-not-exist");
-  writeFileSync(join(fixture.bin, fakeExecutable("pi")), "");
+  writeExecutable(fixture.bin, fakeExecutable("pi"));
 
   const pathEnv = `${pathSeparator}${pathSeparator}${missing}${pathSeparator}${fileEntry}${pathSeparator}${fixture.bin}${pathSeparator}`;
   const results = detectHosts({ home: fixture.home, pathEnv, platform: process.platform });
@@ -121,10 +138,48 @@ test("PATH entries that do not exist or are files are skipped without throwing",
   assert.equal(pi.detected, true);
 });
 
+test("a directory named like an executable is not detected as installed", (t) => {
+  const fixture = makePathFixture(t);
+  // A directory that merely shares the executable's name must never count as "found in PATH".
+  mkdirSync(join(fixture.bin, "codex"), { recursive: true });
+
+  // Relative entry avoids the Windows drive colon, which a ":"-separated PATH would split.
+  const pathEnv = relative(process.cwd(), fixture.bin);
+  const results = detectHosts({ home: fixture.home, pathEnv, platform: "linux" });
+  const codex = results.find((entry) => entry.id === "codex");
+  assert.equal(codex.detected, false);
+  assert.equal(codex.evidence, "");
+});
+
+test("a regular file without executable bits is not detected on POSIX", (t) => {
+  const fixture = makePathFixture(t);
+  // Files created with default modes carry no exec bits on any platform, so this fixture is a
+  // valid non-executable regular file on both Windows and POSIX hosts.
+  writeFileSync(join(fixture.bin, "codex"), "");
+
+  const pathEnv = relative(process.cwd(), fixture.bin);
+  const results = detectHosts({ home: fixture.home, pathEnv, platform: "linux" });
+  const codex = results.find((entry) => entry.id === "codex");
+  assert.equal(codex.detected, false);
+  assert.equal(codex.evidence, "");
+});
+
+test("an executable regular file is still detected in PATH", (t) => {
+  const fixture = makePathFixture(t);
+  writeExecutable(fixture.bin, fakeExecutable("gemini"));
+
+  // Host platform: on POSIX the exec bits qualify the file; on win32 a regular file with an
+  // executable extension is enough (the extension already implies executability).
+  const results = detectHosts({ home: fixture.home, pathEnv: fixture.bin, platform: process.platform });
+  const gemini = results.find((entry) => entry.id === "gemini");
+  assert.equal(gemini.detected, true);
+  assert.match(gemini.evidence, /found in PATH/);
+});
+
 test("combines config-dir and PATH evidence for the same host", (t) => {
   const fixture = makePathFixture(t);
   mkdirSync(join(fixture.home, ".codex"), { recursive: true });
-  writeFileSync(join(fixture.bin, fakeExecutable("codex")), "");
+  writeExecutable(fixture.bin, fakeExecutable("codex"));
 
   const results = detectHosts({ home: fixture.home, pathEnv: fixture.bin, platform: process.platform });
   const codex = results.find((entry) => entry.id === "codex");
