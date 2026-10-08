@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PassThrough, Readable, Writable } from "node:stream";
 import { test } from "node:test";
-import { run } from "../bin/mobile-agent-orchestrator.mjs";
+import { deriveInteractiveTTY, run } from "../bin/mobile-agent-orchestrator.mjs";
+
+const binPath = fileURLToPath(new URL("../bin/mobile-agent-orchestrator.mjs", import.meta.url));
 
 /**
  * Writable stream that records every chunk synchronously, for deterministic output asserts.
@@ -205,6 +209,38 @@ test("an explicit --scope with no --target is validated before any prompting", a
   assert.equal(exit, 1);
   assert.match(err.text(), /Unknown scope: root/);
   assert.doesNotMatch(out.text(), /Select targets/);
+});
+
+test("deriveInteractiveTTY requires both stdin and stdout to be TTYs", () => {
+  // The exact maintainer scenario: piped stdin with a terminal stdout.
+  assert.equal(deriveInteractiveTTY({ isTTY: false }, { isTTY: true }), false);
+  assert.equal(deriveInteractiveTTY({ isTTY: true }, { isTTY: true }), true);
+  assert.equal(deriveInteractiveTTY({ isTTY: true }, { isTTY: false }), false);
+  assert.equal(deriveInteractiveTTY({ isTTY: false }, { isTTY: false }), false);
+});
+
+/**
+ * End-to-end regression: a real spawned process with piped stdin must hit the non-interactive
+ * guard (exit 1, no writes). The existing tests inject isTTY, so none of them cover the default
+ * derivation that run() applies when the isTTY option is omitted.
+ */
+test("piped stdin in a real process hits the non-interactive guard and writes nothing", (t) => {
+  const projectDir = makeTempDir("piped");
+  t.after(() => rmSync(projectDir, { recursive: true, force: true }));
+
+  const result = spawnSync(process.execPath, [binPath, "install"], {
+    input: "2\n2\ny\n",
+    cwd: projectDir,
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 1);
+  const stderr = result.stderr ?? "";
+  assert.match(stderr, /Interactive install requires a TTY/);
+  assert.match(stderr, /--target/);
+  assert.match(stderr, /--scope/);
+  // Zero writes: the piped answers must never drive the interactive flow.
+  assert.equal(existsSync(join(projectDir, ".agents")), false);
 });
 
 /**

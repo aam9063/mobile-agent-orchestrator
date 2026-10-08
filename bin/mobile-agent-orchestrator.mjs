@@ -15,7 +15,9 @@ const usage = `Usage:
 
 With no arguments the installer runs interactively: it detects installed coding-agent CLIs, asks
 which targets to configure and which scope to use, and shows the plan before writing anything.
-Interactive mode requires a TTY; CI and automation must use the explicit-flag form above.
+Interactive mode requires BOTH stdin and stdout to be terminals (TTYs); a piped stdin with a
+terminal stdout is treated as non-interactive. CI and automation must use the explicit-flag form
+above.
 
 Targets: ${targets.join(", ")}
 Scopes:  ${scopes.join(", ")} (required with --target, no default)
@@ -27,6 +29,20 @@ Options:
   --dry-run        Print the exact plan and write nothing.
   --help           Show this help.
 `;
+
+/**
+ * Default interactive-mode derivation: BOTH stdin and stdout must be terminals. Checking only
+ * stdout let a piped stdin (e.g. `printf '2\\n2\\ny\\n' | mao install` from a real terminal)
+ * drive the interactive prompts and write files without explicit flags. stdin.isTTY alone is
+ * not sufficient either: a redirected stdout means the prompts are not visible to a human.
+ *
+ * @param {{ isTTY?: boolean | undefined }} stdin
+ * @param {{ isTTY?: boolean | undefined }} stdout
+ * @returns {boolean}
+ */
+export function deriveInteractiveTTY(stdin, stdout) {
+  return Boolean(stdin.isTTY && stdout.isTTY);
+}
 
 function fail(errorOutput, message) {
   errorOutput.write(`${message}\n`);
@@ -189,7 +205,7 @@ export async function run(argv, options = {}) {
     input = process.stdin,
     output = process.stdout,
     errorOutput = process.stderr,
-    isTTY = Boolean(process.stdout.isTTY),
+    isTTY = deriveInteractiveTTY(process.stdin, process.stdout),
     home = homedir(),
     cwd = process.cwd(),
     detect = detectHosts,
