@@ -80,7 +80,16 @@ Start OpenCode from the relevant project and use its discovered-skill interface 
 
 #### Installer
 
-For Codex, OpenCode, Gemini CLI, and Claude Code, the package ships a deterministic installer:
+For Codex, OpenCode, Gemini CLI, and Claude Code, the package ships a deterministic installer.
+Run it without arguments in a terminal for the interactive flow:
+
+```bash
+npx mobile-agent-orchestrator install
+```
+
+It detects installed coding-agent CLIs (Pi, Claude Code, Codex, OpenCode, Gemini CLI — read-only, no modification), presents each host with its detection evidence and supported destinations, and asks which targets and scope to configure before writing anything. Shared `.agents/skills` destinations are deduplicated in the shown plan. Pi is detection-only: it prints the supported `pi install npm:mobile-agent-orchestrator` command instead of ever being a write target. Cancelling at any prompt performs no writes.
+
+For CI and automation, use the explicit non-interactive form:
 
 ```bash
 npx mobile-agent-orchestrator install --target codex --target opencode --target gemini --target claude-code --scope user
