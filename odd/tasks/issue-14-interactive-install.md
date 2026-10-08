@@ -68,6 +68,11 @@ asks the user which targets to configure. Explicit flags keep working for CI/aut
 - P3: PATH candidates via `existsSync()` matched directories; replaced with `isExecutableFile()` (statSync, regular file, POSIX exec bits `mode & 0o111`, win32 regular file); 3 new tests incl. directory-named-`codex` not detected; existing POSIX fixtures now chmod 0o755. Commit `da2136f`.
 - Suite at fix time: 85 tests, 75 pass, 2 pre-existing Windows detect-release fails, 8 skips (7 pre-existing + 1 capability-probed exec-bit test that runs on POSIX and skips on Windows hosts). Real-PTY hang fix verified by listener-count regression tests; manual POSIX PTY pass left to the maintainer.
 
+## Review round 2 (maintainer, PR #28)
+
+- P2: the non-interactive guard only checked `process.stdout.isTTY`, so piped stdin with terminal output (`printf '2\n2\ny\n' | node bin install`) bypassed the guard and wrote files without flags (maintainer reproduced: exit 0 + wrote SKILL.md). Fix: exported `deriveInteractiveTTY(stdin, stdout)` requiring both TTYs; `run()` uses it only when `isTTY` is omitted (injections still override). Regression tests: 4-combo unit test of the derivation + spawnSync end-to-end piped-stdin (exit 1, guard message, zero writes, no `.agents` dir). Commit `5496630`.
+- Suite after P2: 87 tests, 77 pass, 2 pre-existing Windows fails, 8 skips. Maintainer confirmed on Linux: all 85 tests passed pre-P2, "no other confirmed findings".
+
 ## Verification (from issue)
 
 ```bash
