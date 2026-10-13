@@ -95,6 +95,19 @@ For CI and automation, use the explicit non-interactive form:
 npx mobile-agent-orchestrator install --target codex --target opencode --target gemini --target claude-code --scope user
 ```
 
+#### Status
+
+The installer ships a strictly read-only status command:
+
+```bash
+npx mobile-agent-orchestrator status
+npx mobile-agent-orchestrator status --target codex --scope project
+```
+
+It inspects the managed installations without writing anything: by default every write target in both scopes (user and project); `--target` (repeatable) narrows the hosts and `--scope` narrows the scope. Each inspected destination prints one `STATUS [scope] destination (targets)` line plus indented details when something needs attention. The statuses are: `absent` (nothing installed), `managed` (the recorded manifest matches the on-disk checksums and the recorded version equals the package version), `outdated` (checksums match but the recorded version differs from the package version), `modified` (a managed file is missing or its content no longer matches the manifest), and `unknown` (the directory exists but cannot be verified: partial installation, missing, corrupt, or non-regular manifest). Pi is detection-only and has no managed destination, so it is never inspected.
+
+Exit codes for automation: `0` when every inspected destination is `absent` or `managed` (nothing needs attention); `1` when at least one destination is `outdated`, `modified`, or `unknown`, or on a usage error. Extra unmanaged files beside a fully matching manifest are listed as details but do not change the `managed` status; the installer still treats them as conflicts if you ever re-run `install`.
+
 Codex, OpenCode, and Gemini CLI resolve the same shared `.agents/skills` location (`--scope user` installs to `~/.agents/skills`, `--scope project` to `<cwd>/.agents/skills`), so those repeated targets deduplicate into a single copy. `--target claude-code` resolves the documented Claude Code locations instead (`~/.claude/skills` for user scope, `<cwd>/.claude/skills` for project scope), which are a separate destination from the shared `.agents/skills` location: selecting `claude-code` together with the other targets produces an additional copy in `.claude/skills` with its own manifest beside the skill directory. Use `--dry-run` to print the exact plan first. The installer records a checksum manifest beside the skill directory and aborts without writing anything when the destination contains modified or unmanaged content. On upgrade it removes files that earlier versions managed and the package no longer ships, but only when their checksum still matches the previous manifest; modified, unmanaged, or symlinked content still aborts the install. A manifest that is a symlink or not a regular file is rejected before any write, and the manifest is published atomically so an interrupted run leaves the previous manifest valid.
 
 ### Pi
