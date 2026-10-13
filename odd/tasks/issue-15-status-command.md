@@ -66,6 +66,12 @@ locally modified, or unknown.
 
 (filled per task)
 
+## Review round 1 (maintainer, status PR)
+
+- P2 #1: intermediate directory symlinks were followed (final-component lstat only) — a symlinked `references/` let inspection read external files and report `managed` on matching checksums. Fix: `unsafeIntermediateComponent()` lstats every component between the skill directory and the recorded file; symlink/non-dir intermediate → per-file mismatch, detail `<file> (intermediate <name> is a symlink or not a directory)`, never read through. RED observed: junction fixture reported `managed` pre-fix.
+- P2 #2: directory replaced by a regular file threw ENOTDIR (only ENOENT handled) and aborted the whole inspection. Fix: ENOTDIR (and the Windows-mapped ENOENT) degrades to a per-file mismatch; inspection continues with remaining destinations. Windows quirk documented: traversal through a file is ENOENT on win32, ENOTDIR on POSIX — the maintainer's abort only reproduces on Linux.
+- Evidence: 2 new tests (junction-based, no new skips); suite 113 tests, 102 pass, 2 pre-existing fails, 9 skips. Uncommitted (+37/−2 lib, +51 tests) pending user approval.
+
 ## Review self-check (pre-PR hardening)
 
 - Found: `inspectInstallations` trusted manifest-recorded paths — a crafted manifest with `../outside.txt` drove lstat/sha256 reads outside the skill directory (read-only, but untrusted-input surface).
