@@ -190,6 +190,34 @@ test("a recorded child under an intermediate that became a regular file is a mis
   assert.equal(other.status, "managed", "the untouched destination must still be inspected normally");
 });
 
+test("a cyclic intermediate symlink is reported without aborting other destinations", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+
+  installFixture(environment, { targets: ["codex"], scope: "user" });
+  installFixture(environment, { targets: ["claude-code"], scope: "user" });
+  const codexDestination = join(environment.home, ".agents", "skills", "mobile-agent-orchestrator");
+  rmSync(join(codexDestination, "references"), { recursive: true });
+  try {
+    // Self-referential link: `references -> references`. Resolving any path through it fails with
+    // ELOOP on POSIX, which the old caller hit at the final lstat because it ran that check before
+    // handling the unsafe-intermediate result.
+    symlinkSync("references", join(codexDestination, "references"), "junction");
+  } catch {
+    return t.skip("symlinks unavailable on this platform");
+  }
+
+  const entries = inspect(environment, { targets: ["codex", "claude-code"] });
+  assert.equal(entries.length, 2, "a cyclic intermediate must not abort the whole inspection");
+  const broken = entries.find((entry) => entry.destination === codexDestination);
+  assert.equal(broken.status, "modified");
+  const brokenDetail = broken.details.find((detail) => detail.includes("references/notes.md"));
+  assert.ok(brokenDetail, `expected a detail naming the child path, got: ${JSON.stringify(broken.details)}`);
+  assert.match(brokenDetail, /intermediate/, "the detail must name the offending intermediate");
+  const other = entries.find((entry) => entry.destination !== codexDestination);
+  assert.equal(other.status, "managed", "the untouched destination must still be inspected normally");
+});
+
 test("a partial installation (some files, no manifest) is reported as unknown", (t) => {
   const environment = makeEnvironment();
   t.after(() => rmSync(environment.root, { recursive: true, force: true }));
