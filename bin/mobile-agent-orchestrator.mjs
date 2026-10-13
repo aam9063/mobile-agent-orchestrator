@@ -6,12 +6,13 @@ import { fileURLToPath } from "node:url";
 import { Readable, Writable } from "node:stream";
 import { detectHosts } from "../lib/detect.mjs";
 import { scopes, targets } from "../lib/hosts.mjs";
-import { buildPlan, executePlan } from "../lib/installer.mjs";
+import { inspectInstallations, buildPlan, executePlan } from "../lib/installer.mjs";
 import { selectInstallPlan } from "../lib/prompt.mjs";
 
 const usage = `Usage:
   mobile-agent-orchestrator install --target <name> [--target <name> ...] --scope <user|project> [--dry-run]
   mobile-agent-orchestrator install
+  mobile-agent-orchestrator status [--target <name>]... [--scope <user|project>]
 
 With no arguments the installer runs interactively: it detects installed coding-agent CLIs, asks
 which targets to configure and which scope to use, and shows the plan before writing anything.
@@ -28,6 +29,25 @@ Options:
                    preselects the interactive scope question.
   --dry-run        Print the exact plan and write nothing.
   --help           Show this help.
+
+Status (strictly read-only):
+  mobile-agent-orchestrator status inspects installations without writing anything. By default it
+  inspects every write target in BOTH scopes (pi is detect-only and has no managed destination, so
+  it is never inspected). Each inspected destination prints one line:
+
+    STATUS [scope] destination (targets)
+
+  where STATUS is absent, managed, outdated, modified, or unknown, followed by indented detail
+  lines when a destination needs attention.
+
+Status options:
+  --target <name>  Limit inspection to these targets; repeatable; defaults to all write targets.
+  --scope <scope>  Limit inspection to user or project; defaults to both.
+
+Exit codes:
+  0  every inspected destination is absent or managed (nothing needs attention).
+  1  at least one destination is outdated, modified, or unknown, or a usage/validation error
+     occurred.
 `;
 
 /**
@@ -44,18 +64,26 @@ export function deriveInteractiveTTY(stdin, stdout) {
   return Boolean(stdin.isTTY && stdout.isTTY);
 }
 
+/** The version recorded in installed manifests and compared against by `status`. */
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+function readInstallerVersion() {
+  return JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8")).version;
+}
+
 function fail(errorOutput, message) {
   errorOutput.write(`${message}\n`);
   return 1;
 }
 
-function parseArguments(argv) {
+function parseArguments(argv, { allowDryRun = true } = {}) {
   const selectedTargets = [];
   let scope = null;
   let dryRun = false;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--dry-run") {
+      if (!allowDryRun) throw new Error(`Unknown argument: ${argument}.`);
       dryRun = true;
     } else if (argument === "--target") {
       index += 1;
@@ -216,8 +244,45 @@ export async function run(argv, options = {}) {
     output.write(`${usage}\n`);
     return 0;
   }
-  if (command !== "install") {
+  if (command !== "install" && command !== "status") {
     return fail(errorOutput, command === undefined ? "Missing subcommand." : `Unknown subcommand: ${command}.`);
+  }
+
+  if (command === "status") {
+    let parsed;
+    try {
+      parsed = parseArguments(rest, { allowDryRun: false });
+    } catch (error) {
+      return fail(errorOutput, error.message);
+    }
+    // Same validation and messages as the install path; no default scope (both by default).
+    if (parsed.scope && !scopes.includes(parsed.scope)) {
+      return fail(errorOutput, `Unknown scope: ${parsed.scope}. Expected one of: ${scopes.join(", ")}.`);
+    }
+    const invalidTarget = parsed.selectedTargets.find((target) => !targets.includes(target));
+    if (invalidTarget) return fail(errorOutput, `Unknown target: ${invalidTarget}. Expected one of: ${targets.join(", ")}.`);
+    const selectedTargets = parsed.selectedTargets.length > 0 ? parsed.selectedTargets : [...targets];
+    const selectedScopes = parsed.scope ? [parsed.scope] : [...scopes];
+    let entries;
+    try {
+      entries = inspectInstallations({
+        targets: selectedTargets,
+        scopes: selectedScopes,
+        cwd,
+        home,
+        installerVersion: readInstallerVersion(),
+      });
+    } catch (error) {
+      return fail(errorOutput, `Status inspection failed: ${error.message}`);
+    }
+    let attentionNeeded = false;
+    for (const entry of entries) {
+      output.write(`${entry.status} [${entry.scope}] ${entry.destination} (${entry.targets.join(", ")})\n`);
+      for (const detail of entry.details) output.write(`  - ${detail}\n`);
+      if (entry.status === "outdated" || entry.status === "modified" || entry.status === "unknown") attentionNeeded = true;
+    }
+    output.write(`${entries.length} destination(s) inspected\n`);
+    return attentionNeeded ? 1 : 0;
   }
 
   let parsed;
@@ -269,7 +334,7 @@ export async function run(argv, options = {}) {
     scope = parsed.scope;
   }
 
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const root = packageRoot;
   let plan;
   try {
     plan = buildPlan({
@@ -278,7 +343,7 @@ export async function run(argv, options = {}) {
       cwd,
       home,
       skillRoot: resolve(root, "skills", "mobile-agent-orchestrator"),
-      installerVersion: JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).version,
+      installerVersion: readInstallerVersion(),
     });
   } catch (error) {
     return fail(errorOutput, `Install planning failed: ${error.message}`);
