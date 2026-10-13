@@ -139,6 +139,57 @@ test("a missing managed file is reported as modified and the detail names the fi
   assert.ok(entry.details.some((detail) => detail.includes("references/notes.md")));
 });
 
+test("an intermediate symlinked directory is never followed: matching external content is not managed", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+
+  installFixture(environment);
+  const destination = join(environment.home, ".agents", "skills", "mobile-agent-orchestrator");
+  const notesPath = join(destination, "references", "notes.md");
+  const originalContent = readFileSync(notesPath, "utf8");
+  const externalDirectory = join(environment.root, "external-references");
+  mkdirSync(externalDirectory, { recursive: true });
+  writeFileSync(join(externalDirectory, "notes.md"), originalContent);
+  rmSync(join(destination, "references"), { recursive: true });
+  try {
+    // "junction" needs no symlink privilege on Windows and is ignored on POSIX, where a real
+    // directory symlink is created; lstat reports both as symbolic links.
+    symlinkSync(externalDirectory, join(destination, "references"), "junction");
+  } catch {
+    return t.skip("symlinks unavailable on this platform");
+  }
+  const [entry] = inspect(environment);
+  assert.equal(
+    entry.status,
+    "modified",
+    "a symlinked intermediate must never let matching external content report as managed",
+  );
+  const detail = entry.details.find((line) => line.includes("references/notes.md"));
+  assert.ok(detail, `expected a detail naming the recorded file, got: ${JSON.stringify(entry.details)}`);
+  assert.match(detail, /intermediate/, "the detail must name the offending intermediate");
+});
+
+test("a recorded child under an intermediate that became a regular file is a mismatch and other destinations still report", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+
+  installFixture(environment, { targets: ["codex"], scope: "user" });
+  installFixture(environment, { targets: ["claude-code"], scope: "user" });
+  const codexDestination = join(environment.home, ".agents", "skills", "mobile-agent-orchestrator");
+  rmSync(join(codexDestination, "references"), { recursive: true });
+  writeFileSync(join(codexDestination, "references"), "now a regular file\n");
+
+  const entries = inspect(environment, { targets: ["codex", "claude-code"] });
+  assert.equal(entries.length, 2, "one broken destination must not abort the whole inspection");
+  const broken = entries.find((entry) => entry.destination === codexDestination);
+  assert.equal(broken.status, "modified");
+  const brokenDetail = broken.details.find((detail) => detail.includes("references/notes.md"));
+  assert.ok(brokenDetail, `expected a detail naming the child path, got: ${JSON.stringify(broken.details)}`);
+  assert.match(brokenDetail, /intermediate/, "the detail must name the offending intermediate");
+  const other = entries.find((entry) => entry.destination !== codexDestination);
+  assert.equal(other.status, "managed", "the untouched destination must still be inspected normally");
+});
+
 test("a partial installation (some files, no manifest) is reported as unknown", (t) => {
   const environment = makeEnvironment();
   t.after(() => rmSync(environment.root, { recursive: true, force: true }));
