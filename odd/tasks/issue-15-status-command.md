@@ -70,7 +70,12 @@ locally modified, or unknown.
 
 - P2 #1: intermediate directory symlinks were followed (final-component lstat only) — a symlinked `references/` let inspection read external files and report `managed` on matching checksums. Fix: `unsafeIntermediateComponent()` lstats every component between the skill directory and the recorded file; symlink/non-dir intermediate → per-file mismatch, detail `<file> (intermediate <name> is a symlink or not a directory)`, never read through. RED observed: junction fixture reported `managed` pre-fix.
 - P2 #2: directory replaced by a regular file threw ENOTDIR (only ENOENT handled) and aborted the whole inspection. Fix: ENOTDIR (and the Windows-mapped ENOENT) degrades to a per-file mismatch; inspection continues with remaining destinations. Windows quirk documented: traversal through a file is ENOENT on win32, ENOTDIR on POSIX — the maintainer's abort only reproduces on Linux.
-- Evidence: 2 new tests (junction-based, no new skips); suite 113 tests, 102 pass, 2 pre-existing fails, 9 skips. Uncommitted (+37/−2 lib, +51 tests) pending user approval.
+- Evidence: 2 new tests (junction-based, no new skips); suite 113 tests, 102 pass, 2 pre-existing fails, 9 skips. Committed with user approval: f859c0d (fix) + 1b645c6 (docs).
+
+## Review round 2 (maintainer, status PR)
+
+- P2: normalization bypass — manifest record `missing/../references/guide.md` (absent `missing`, symlinked `references` with matching content): `unsafeIntermediateComponent` stopped at the first ENOENT, `join()` normalized `missing/..` away, and the checksum read followed the symlink → `managed`. Fix: `isCanonicalRecordedPath` (non-empty, no backslash, not absolute, no empty/`.`/`..` segment) folded into the unsafeRecordedPaths filter → non-canonical or containment-violating records make the destination `unknown` with `(unsafe manifest path)` details. With canonical records guaranteed, join() normalizes nothing and the intermediate check validates exactly the read path. Install path verified safe by reading: writes are keyed by real listings (discoverPackageFiles/listFiles), never by manifest paths.
+- Evidence: 2 new tests incl. the maintainer's exact junction reproduction (RED: `managed` pre-fix); suite 115 tests, 104 pass, 2 pre-existing fails, 9 skips. Uncommitted (+87/−1) pending user approval.
 
 ## Review self-check (pre-PR hardening)
 
