@@ -245,6 +245,72 @@ test("a manifest recording a path outside the skill directory is reported as unk
   );
 });
 
+test("a recorded path with a `..` segment is never normalized away: traversal through a symlinked directory is unknown", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+
+  installFixture(environment);
+  const destination = join(environment.home, ".agents", "skills", "mobile-agent-orchestrator");
+  const manifestPath = join(environment.home, ".agents", "skills", MANIFEST_NAME);
+  const notesPath = join(destination, "references", "notes.md");
+  const originalContent = readFileSync(notesPath, "utf8");
+
+  // Rewrite one recorded path as `missing/../references/notes.md`, keeping its real checksum, and
+  // make `references` a junction to an external directory whose file content matches that
+  // checksum. `missing` must not exist, so the old intermediate check bails out on its first
+  // ENOENT while join() normalizes the `..` away and the read follows the junction outside.
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const record = manifest.files.find((file) => file.path === "references/notes.md");
+  assert.ok(record, "fixture manifest records references/notes.md");
+  record.path = "missing/../references/notes.md";
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+  const externalDirectory = join(environment.root, "external-references");
+  mkdirSync(externalDirectory, { recursive: true });
+  writeFileSync(join(externalDirectory, "notes.md"), originalContent);
+  rmSync(join(destination, "references"), { recursive: true });
+  try {
+    symlinkSync(externalDirectory, join(destination, "references"), "junction");
+  } catch {
+    return t.skip("symlinks unavailable on this platform");
+  }
+  assert.equal(existsSync(join(destination, "missing")), false, "the `missing` intermediate must not exist");
+
+  const [entry] = inspect(environment);
+  assert.equal(
+    entry.status,
+    "unknown",
+    "a crafted `..` record must never let external content through a symlink report as managed",
+  );
+  assert.ok(
+    entry.details.some((detail) => detail.includes("missing/../references/notes.md") && detail.includes("unsafe manifest path")),
+    `expected an unsafe-path detail naming the crafted record, got: ${JSON.stringify(entry.details)}`,
+  );
+});
+
+test("non-canonical recorded paths (dot segments) are reported as unknown without any symlink", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+
+  installFixture(environment);
+  const manifestPath = join(environment.home, ".agents", "skills", MANIFEST_NAME);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.files.find((file) => file.path === "SKILL.md").path = "./SKILL.md";
+  manifest.files.find((file) => file.path === "references/notes.md").path = "SKILL.md/../notes.md";
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+  const [entry] = inspect(environment);
+  assert.equal(entry.status, "unknown", "dot-segment records are non-canonical and untrustworthy");
+  assert.ok(
+    entry.details.some((detail) => detail.includes("./SKILL.md") && detail.includes("unsafe manifest path")),
+    `expected an unsafe-path detail naming ./SKILL.md, got: ${JSON.stringify(entry.details)}`,
+  );
+  assert.ok(
+    entry.details.some((detail) => detail.includes("SKILL.md/../notes.md") && detail.includes("unsafe manifest path")),
+    `expected an unsafe-path detail naming SKILL.md/../notes.md, got: ${JSON.stringify(entry.details)}`,
+  );
+});
+
 test("a symlinked manifest is reported as unknown and never followed", (t) => {
   const environment = makeEnvironment();
   t.after(() => rmSync(environment.root, { recursive: true, force: true }));
