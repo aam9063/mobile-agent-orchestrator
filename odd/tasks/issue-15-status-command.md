@@ -75,7 +75,13 @@ locally modified, or unknown.
 ## Review round 2 (maintainer, status PR)
 
 - P2: normalization bypass — manifest record `missing/../references/guide.md` (absent `missing`, symlinked `references` with matching content): `unsafeIntermediateComponent` stopped at the first ENOENT, `join()` normalized `missing/..` away, and the checksum read followed the symlink → `managed`. Fix: `isCanonicalRecordedPath` (non-empty, no backslash, not absolute, no empty/`.`/`..` segment) folded into the unsafeRecordedPaths filter → non-canonical or containment-violating records make the destination `unknown` with `(unsafe manifest path)` details. With canonical records guaranteed, join() normalizes nothing and the intermediate check validates exactly the read path. Install path verified safe by reading: writes are keyed by real listings (discoverPackageFiles/listFiles), never by manifest paths.
-- Evidence: 2 new tests incl. the maintainer's exact junction reproduction (RED: `managed` pre-fix); suite 115 tests, 104 pass, 2 pre-existing fails, 9 skips. Uncommitted (+87/−1) pending user approval.
+- Evidence: 2 new tests incl. the maintainer's exact junction reproduction (RED: `managed` pre-fix); suite 115 tests, 104 pass, 2 pre-existing fails, 9 skips. Committed with user approval: 9a86894 (fix) + fdc8949 (docs).
+
+## Review round 3 (maintainer, status PR)
+
+- P2: cyclic intermediate symlink (references -> references) — the caller ran the final `lstatSync(destinationPath)` before handling the unsafe-intermediate result; lstat traverses intermediate symlinks during path resolution, so the cyclic link threw ELOOP on POSIX and aborted the whole inspection (exit 1, no destinations reported). Fix: resolve the final component ONLY when `unsafeIntermediateComponent` returned null — a failed intermediate skips the lstat entirely and degrades to the per-file mismatch.
+- RED caveat (honest): on this Windows host the cyclic junction does not throw at the final lstat (win32 resolves it without ELOOP), so the pre-fix abort was not locally reproducible — the POSIX ELOOP abort is the maintainer's reproduction at fdc8949. The fix is still strictly safer: the final lstat is never attempted through an unsafe intermediate. Regression test (cyclic junction + intact second destination) runs on all platforms and asserts 2 entries, `modified` + intermediate detail, other destination `managed`.
+- Evidence: suite 116 tests, 105 pass, 2 pre-existing fails, 9 skips. Uncommitted pending user approval.
 
 ## Review self-check (pre-PR hardening)
 
