@@ -108,6 +108,21 @@ It inspects the managed installations without writing anything: by default every
 
 Exit codes for automation: `0` when every inspected destination is `absent` or `managed` (nothing needs attention); `1` when at least one destination is `outdated`, `modified`, or `unknown`, or on a usage error. Extra unmanaged files beside a fully matching manifest are listed as details but do not change the `managed` status; the installer still treats them as conflicts if you ever re-run `install`.
 
+#### Uninstall
+
+The installer ships a removal command that mirrors `install`'s safety model:
+
+```bash
+npx mobile-agent-orchestrator uninstall --target codex
+npx mobile-agent-orchestrator uninstall --target codex --scope project --dry-run
+```
+
+It removes only the files recorded in the installation manifest — and only when their on-disk checksum still matches the recorded one — plus the directories those files leave empty, and the manifest itself. Unmanaged files (your own notes, configs, anything the installer did not write) are never removed and are printed as `keep` lines in the plan. A locally modified managed file blocks its whole destination: nothing is removed there and the plan explains which file triggered the block. Destinations without a trustworthy manifest (missing, corrupt, symlinked, or one recording paths outside the skill directory) are reported as `unknown` and refused. A destination whose skill directory is absent reports `absent` with nothing to do.
+
+Targets sharing one `.agents/skills` directory (Codex, OpenCode, Gemini CLI) are installed as one copy and are removed as that single copy: `uninstall --target codex` reports `(codex, opencode, gemini)` on the shared line and removes the copy. By default BOTH scopes are planned (user and project); `--scope` narrows it. `--dry-run` prints the exact removal plan — every file, directory, and manifest removal — and writes nothing.
+
+Exit codes for automation: `0` when every planned destination was uninstalled or was already absent; `1` when at least one destination is blocked (modified or unsafe content) or unknown, or on a usage error. The command is deliberately non-interactive: check the `--dry-run` plan first, then run it. The source skill and any Pi-installed copy are never touched — uninstall only ever operates on installer-managed destinations.
+
 Codex, OpenCode, and Gemini CLI resolve the same shared `.agents/skills` location (`--scope user` installs to `~/.agents/skills`, `--scope project` to `<cwd>/.agents/skills`), so those repeated targets deduplicate into a single copy. `--target claude-code` resolves the documented Claude Code locations instead (`~/.claude/skills` for user scope, `<cwd>/.claude/skills` for project scope), which are a separate destination from the shared `.agents/skills` location: selecting `claude-code` together with the other targets produces an additional copy in `.claude/skills` with its own manifest beside the skill directory. Use `--dry-run` to print the exact plan first. The installer records a checksum manifest beside the skill directory and aborts without writing anything when the destination contains modified or unmanaged content. On upgrade it removes files that earlier versions managed and the package no longer ships, but only when their checksum still matches the previous manifest; modified, unmanaged, or symlinked content still aborts the install. A manifest that is a symlink or not a regular file is rejected before any write, and the manifest is published atomically so an interrupted run leaves the previous manifest valid.
 
 ### Pi
