@@ -691,6 +691,131 @@ test("a junction swapped in for the destination root after planning is refused b
   assert.equal(existsSync(manifestPathFor(environment)), true, "the manifest must survive a refused destination");
 });
 
+// --- Maintainer round-2 P1 fix: physical identity pinning (destination root + parent) ---
+
+test("a junction swapped in for the skills parent after planning is refused by identity and the external victim files survive", (t) => {
+  // The maintainer's exact round-2 reproduction: an external directory mirrors the managed
+  // content byte-for-byte and carries a copy of the manifest; the real `.agents/skills` is
+  // renamed aside and a junction takes its place. Every final-component lstat kind check and
+  // every manifest checksum passes through the junction, so only the physical dev:ino identity
+  // recorded at plan time can tell the swap happened and refuse the destination.
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+
+  installFixture(environment);
+  const destination = destinationPath(environment);
+  const manifestPath = manifestPathFor(environment);
+  const plan = planUninstall(environment);
+  assert.equal(plan.status, "uninstall", "the plan itself was built against a clean installation");
+
+  const manifestBytes = readFileSync(manifestPath);
+  const realSkills = join(environment.root, "real-skills");
+  renameSync(join(environment.home, ".agents", "skills"), realSkills);
+  const externalSkills = join(environment.root, "external-skills");
+  const externalDestination = join(externalSkills, "mobile-agent-orchestrator");
+  mkdirSync(join(externalDestination, "references"), { recursive: true });
+  writeFileSync(join(externalDestination, "SKILL.md"), fixtureFiles["SKILL.md"]);
+  writeFileSync(join(externalDestination, "references", "notes.md"), fixtureFiles["references/notes.md"]);
+  writeFileSync(join(externalSkills, MANIFEST_NAME), manifestBytes);
+  try {
+    symlinkSync(externalSkills, join(environment.home, ".agents", "skills"), "junction");
+  } catch {
+    return t.skip("symlinks unavailable on this platform");
+  }
+
+  const result = executeUninstallPlan(plan);
+  assert.equal(result.status, "blocked", "execution must refuse the destination");
+  assert.ok(
+    result.blocked.includes("skill destination (or its parent) changed identity since planning"),
+    `expected an identity-change detail, got: ${JSON.stringify(result.blocked)}`,
+  );
+  assert.deepEqual(result.removedFiles, [], "the refusal happens before any unlink");
+  assert.deepEqual(result.removedDirectories, []);
+  assert.equal(readFileSync(join(externalDestination, "SKILL.md"), "utf8"), fixtureFiles["SKILL.md"], "the external victim file must survive");
+  assert.equal(readFileSync(join(externalDestination, "references", "notes.md"), "utf8"), fixtureFiles["references/notes.md"], "the external victim reference must survive");
+  assert.equal(existsSync(join(externalSkills, MANIFEST_NAME)), true, "the external manifest copy must survive");
+  assert.equal(readFileSync(join(realSkills, "mobile-agent-orchestrator", "SKILL.md"), "utf8"), fixtureFiles["SKILL.md"], "the real installation moved aside is untouched");
+});
+
+test("a real directory rebuilt at the recorded paths after planning is refused by identity even though every lstat and checksum check passes", (t) => {
+  // The stronger identity case, catching what a final-component lstat never can: no symlink
+  // anywhere — a NEW REAL directory tree with a copied manifest and byte-identical content sits
+  // at the recorded paths, so every per-file lstat kind check and every manifest checksum would
+  // pass. Only the dev:ino comparison can tell that these physical directories are not the ones
+  // the plan was built against.
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+
+  installFixture(environment);
+  const destination = destinationPath(environment);
+  const manifestPath = manifestPathFor(environment);
+  const plan = planUninstall(environment);
+  assert.equal(plan.status, "uninstall", "the plan itself was built against a clean installation");
+
+  const manifestBytes = readFileSync(manifestPath);
+  const realSkills = join(environment.root, "real-skills");
+  renameSync(join(environment.home, ".agents", "skills"), realSkills);
+  mkdirSync(join(destination, "references"), { recursive: true });
+  writeFileSync(join(destination, "SKILL.md"), fixtureFiles["SKILL.md"]);
+  writeFileSync(join(destination, "references", "notes.md"), fixtureFiles["references/notes.md"]);
+  writeFileSync(manifestPath, manifestBytes);
+
+  const result = executeUninstallPlan(plan);
+  assert.equal(result.status, "blocked", "execution must refuse the destination");
+  assert.ok(
+    result.blocked.includes("skill destination (or its parent) changed identity since planning"),
+    `expected an identity-change detail, got: ${JSON.stringify(result.blocked)}`,
+  );
+  assert.deepEqual(result.removedFiles, [], "the refusal happens before any unlink");
+  assert.deepEqual(result.removedDirectories, []);
+  assert.equal(readFileSync(join(destination, "SKILL.md"), "utf8"), fixtureFiles["SKILL.md"], "the decoy copy survives");
+  assert.equal(readFileSync(join(destination, "references", "notes.md"), "utf8"), fixtureFiles["references/notes.md"], "the decoy reference survives");
+  assert.equal(existsSync(manifestPath), true, "the decoy manifest survives");
+  assert.equal(readFileSync(join(realSkills, "mobile-agent-orchestrator", "SKILL.md"), "utf8"), fixtureFiles["SKILL.md"], "the real installation moved aside is untouched");
+});
+
+test("a junction swapped in for .agents (one level above the skills parent) after planning is refused by identity", (t) => {
+  // The parent-only swap: the real `.agents` tree is renamed aside and a junction to an external
+  // structure with a byte-identical decoy takes its place, one level above the destination's
+  // parent. The identity the destination path RESOLVES to no longer matches the recorded one,
+  // even though nothing about the final path component itself looks different.
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+
+  installFixture(environment);
+  const destination = destinationPath(environment);
+  const manifestPath = manifestPathFor(environment);
+  const plan = planUninstall(environment);
+  assert.equal(plan.status, "uninstall", "the plan itself was built against a clean installation");
+
+  const manifestBytes = readFileSync(manifestPath);
+  const realAgents = join(environment.root, "real-agents");
+  renameSync(join(environment.home, ".agents"), realAgents);
+  const externalAgents = join(environment.root, "external-agents");
+  const externalDestination = join(externalAgents, "skills", "mobile-agent-orchestrator");
+  mkdirSync(join(externalDestination, "references"), { recursive: true });
+  writeFileSync(join(externalDestination, "SKILL.md"), fixtureFiles["SKILL.md"]);
+  writeFileSync(join(externalDestination, "references", "notes.md"), fixtureFiles["references/notes.md"]);
+  writeFileSync(join(externalAgents, "skills", MANIFEST_NAME), manifestBytes);
+  try {
+    symlinkSync(externalAgents, join(environment.home, ".agents"), "junction");
+  } catch {
+    return t.skip("symlinks unavailable on this platform");
+  }
+
+  const result = executeUninstallPlan(plan);
+  assert.equal(result.status, "blocked", "execution must refuse the destination");
+  assert.ok(
+    result.blocked.includes("skill destination (or its parent) changed identity since planning"),
+    `expected an identity-change detail, got: ${JSON.stringify(result.blocked)}`,
+  );
+  assert.deepEqual(result.removedFiles, [], "the refusal happens before any unlink");
+  assert.deepEqual(result.removedDirectories, []);
+  assert.equal(readFileSync(join(externalDestination, "SKILL.md"), "utf8"), fixtureFiles["SKILL.md"], "the decoy copy survives");
+  assert.equal(existsSync(join(externalAgents, "skills", MANIFEST_NAME)), true, "the decoy manifest survives");
+  assert.equal(readFileSync(join(realAgents, "skills", "mobile-agent-orchestrator", "SKILL.md"), "utf8"), fixtureFiles["SKILL.md"], "the real installation moved aside is untouched");
+});
+
 // --- CLI-level tests: the `uninstall` subcommand (issue #16 T2) ---
 
 /** Writable stream that records every chunk synchronously, for deterministic output asserts. */
