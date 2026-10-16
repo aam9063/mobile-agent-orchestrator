@@ -84,7 +84,7 @@ test("absent destination is reported without details", (t) => {
   const entries = inspect(environment);
   assert.deepEqual(entries, [{
     status: "absent",
-    scope: "user",
+    scopes: ["user"],
     destination: join(environment.home, ".agents", "skills", "mobile-agent-orchestrator"),
     manifestPath: join(environment.home, ".agents", "skills", MANIFEST_NAME),
     targets: ["codex"],
@@ -100,7 +100,7 @@ test("matching managed installation is reported as managed with no details", (t)
   installFixture(environment);
   const [entry] = inspect(environment);
   assert.equal(entry.status, "managed");
-  assert.equal(entry.scope, "user");
+  assert.deepEqual(entry.scopes, ["user"]);
   assert.equal(entry.manifestVersion, installerVersion);
   assert.deepEqual(entry.details, []);
 });
@@ -391,7 +391,7 @@ test("both scopes are inspected with user first and project destinations resolve
   installFixture(environment, { scope: "project" });
 
   const entries = inspect(environment, { scopes: ["user", "project"] });
-  assert.deepEqual(entries.map((entry) => entry.scope), ["user", "project"]);
+  assert.deepEqual(entries.map((entry) => entry.scopes), [["user"], ["project"]]);
   assert.equal(entries[0].status, "managed");
   assert.equal(entries[1].status, "managed");
   assert.equal(entries[1].destination, join(environment.cwd, ".agents", "skills", "mobile-agent-orchestrator"));
@@ -445,9 +445,9 @@ test("statuses reflect on-disk state after inspection runs (ordering and mixed s
   writeFileSync(join(projectDestination, "SKILL.md"), "locally edited\n");
 
   const entries = inspect(environment, { scopes: ["user", "project"] });
-  assert.deepEqual(entries.map((entry) => [entry.scope, entry.status]), [
-    ["user", "outdated"],
-    ["project", "modified"],
+  assert.deepEqual(entries.map((entry) => [entry.scopes, entry.status]), [
+    [["user"], "outdated"],
+    [["project"], "modified"],
   ]);
 });
 
@@ -479,6 +479,26 @@ function statusRun(environment, argv) {
 }
 
 const allTargets = ["codex", "opencode", "gemini", "claude-code"];
+
+test("status with cwd equal to home reports the shared destination once with merged scopes", async (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+  // Same root cause as the uninstall collision: both default scopes resolve to the SAME
+  // destination, so it must be reported once with merged scopes, not duplicated per scope.
+  environment.cwd = environment.home;
+
+  installFixture(environment, { scope: "user" });
+
+  const { exitPromise, out, err } = statusRun(environment, ["status", "--target", "codex"]);
+  const exit = await exitPromise;
+
+  assert.equal(exit, 0, "a managed installation needs no attention regardless of scope collision");
+  assert.equal(err.text(), "");
+  assert.deepEqual(out.lines(), [
+    `managed [user, project] ${join(environment.home, ".agents", "skills", "mobile-agent-orchestrator")} (codex)`,
+    "1 destination(s) inspected",
+  ]);
+});
 
 test("CLI status with no arguments inspects both scopes and exits 0 when everything is managed", async (t) => {
   const environment = makeEnvironment();

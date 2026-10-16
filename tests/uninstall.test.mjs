@@ -649,6 +649,48 @@ test("the manifest is removed last and a partially cleaned destination converges
   assert.equal(existsSync(manifestPath), false);
 });
 
+test("a junction swapped in for the destination root after planning is refused before any unlink and the external victim survives", (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+
+  installFixture(environment);
+  const destination = destinationPath(environment);
+  const plan = planUninstall(environment);
+  assert.equal(plan.status, "uninstall", "the plan itself was built against a clean installation");
+
+  // Move the real installation aside and put a junction in its place. The external directory
+  // mirrors the managed content byte-for-byte (every recorded checksum matches), so without a
+  // re-check of the destination ROOT itself the executor would follow the junction and unlink
+  // the external victim files even though every per-file re-check passes.
+  const realInstallation = join(environment.root, "real-installation");
+  renameSync(destination, realInstallation);
+  const externalDirectory = join(environment.root, "victim-root");
+  mkdirSync(join(externalDirectory, "references"), { recursive: true });
+  const victimPath = join(externalDirectory, "SKILL.md");
+  const victimReferencePath = join(externalDirectory, "references", "notes.md");
+  writeFileSync(victimPath, fixtureFiles["SKILL.md"]);
+  writeFileSync(victimReferencePath, fixtureFiles["references/notes.md"]);
+  try {
+    symlinkSync(externalDirectory, destination, "junction");
+  } catch {
+    return t.skip("symlinks unavailable on this platform");
+  }
+
+  const result = executeUninstallPlan(plan);
+  assert.equal(result.status, "blocked", "execution must refuse the destination");
+  assert.ok(
+    result.blocked.includes(`skill destination is no longer a managed directory: ${destination}`),
+    `expected a root-refusal detail, got: ${JSON.stringify(result.blocked)}`,
+  );
+  assert.deepEqual(result.removedFiles, [], "the refusal happens before any unlink");
+  assert.deepEqual(result.removedDirectories, []);
+  assert.equal(existsSync(victimPath), true, "the external victim file must survive");
+  assert.equal(readFileSync(victimPath, "utf8"), fixtureFiles["SKILL.md"], "the victim file's content must be intact");
+  assert.equal(existsSync(victimReferencePath), true, "the external victim reference must survive");
+  assert.equal(existsSync(join(realInstallation, "SKILL.md")), true, "the real installation moved aside is untouched");
+  assert.equal(existsSync(manifestPathFor(environment)), true, "the manifest must survive a refused destination");
+});
+
 // --- CLI-level tests: the `uninstall` subcommand (issue #16 T2) ---
 
 /** Writable stream that records every chunk synchronously, for deterministic output asserts. */
@@ -840,6 +882,38 @@ test("CLI uninstall of a shared destination names every target and removes the s
   assert.equal(exit, 0);
   assert.equal(existsSync(destination), false, "the shared copy is removed by any one of its targets");
   assert.deepEqual(readdirSync(join(environment.home, ".agents", "skills")), [], "the shared skills directory is left empty");
+});
+
+// --- PR review round 1 fixes (issue #16 round 3) ---
+
+test("uninstall from the home directory deduplicates the shared destination into one [user, project] entry", async (t) => {
+  const environment = makeEnvironment();
+  t.after(() => rmSync(environment.root, { recursive: true, force: true }));
+  // Running from the home directory makes BOTH default scopes resolve to the SAME destination;
+  // the plan must carry one entry with merged scopes, not a second entry that finds its files
+  // already removed and blocks the command.
+  environment.cwd = environment.home;
+
+  installFixture(environment, { scope: "user" });
+  const destination = sharedDestination(environment);
+
+  const { exitPromise, out, err } = cliRun(environment, ["uninstall", "--target", "codex"]);
+  const exit = await exitPromise;
+
+  assert.equal(exit, 0, "one clean destination must uninstall successfully");
+  assert.equal(err.text(), "");
+  const lines = out.lines();
+  assert.equal(lines[0], `uninstall [user, project] ${destination} (codex, opencode, gemini)`);
+  assert.equal(lines.at(-1), "1 destination(s) inspected");
+  const removedLines = lines.filter((line) => line.startsWith("  - removed")).sort();
+  assert.deepEqual(removedLines, [
+    `  - removed ${join(destination, "SKILL.md")}`,
+    `  - removed ${join(destination, "references", "notes.md")}`,
+    `  - removed ${manifestPathFor(environment)}`,
+    `  - removed directory ${join(destination, "references")}`,
+    `  - removed directory ${destination}`,
+  ].sort(), "each managed path is removed exactly once");
+  assert.equal(existsSync(destination), false);
 });
 
 test("--help documents the uninstall command, its options, and its exit codes", async () => {
