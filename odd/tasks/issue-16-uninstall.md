@@ -49,10 +49,11 @@ Quoting the issue verbatim:
 6. **CLI**: `uninstall --target <name> [--target ...] [--scope <user|project>] [--dry-run]`.
    `--target` required (S1, exact install validation messages); `--scope` optional, defaults to
    BOTH scopes (matches the issue's verification form `uninstall --target codex --dry-run` and the
-   status convention; each destination is reported per scope so nothing is ambiguous). Exit codes
-   documented like status: `0` = every destination uninstalled or already absent; `1` = any
-   blocked/unknown destination or usage error. No interactive flow (destructive command +
-   non-goal S9 conservatism); `--dry-run` is the safety net (S5).
+   status convention). Destinations are deduplicated across scopes: when both scopes resolve to
+   the same location (e.g. running from `$HOME`), one merged entry reports `[user, project]`
+   (PR round-1 P2 fix). Exit codes documented like status: `0` = every destination uninstalled or
+   already absent; `1` = any blocked/unknown destination or usage error. No interactive flow
+   (destructive command + non-goal S9 conservatism); `--dry-run` is the safety net (S5).
 7. **Never removed, ever (S6/S9)**: the package source (`skillRoot`) is not even an input to the
    uninstall plan; nothing outside destination skill directories + their manifest + their empty
    recorded-path directories is touched. Pi/npm packages are not destinations of this installer.
@@ -101,3 +102,9 @@ Quoting the issue verbatim:
 - Residual normalization (parent-applied inline after the writer flagged it): the skill-directory lstat in `classifyUninstallDestination` and `inspectInstallations` also treats ENOTDIR as absent — a non-directory ancestor of the destination cannot host a managed installation.
 - 11 attacks failed (documented): canonical/containment gates, NTFS aliasing incl. ADS + trailing dot, directory-cleanup containment, partial-failure convergence, expandSharedTargets abuse, zero-write dry-run at all levels.
 - Suite after hardening: 146 tests, 133 pass, 2 pre-existing Windows detect-release fails, 11 skips.
+
+## Review round 1 (maintainer, PR #30)
+
+- P1 (live-reproduced): `verifyRemovalCandidate` validated intermediates below the destination but NOT the destination root — renaming the skill directory and replacing it with a symlink to an external directory (with matching recorded checksum) made execution follow the root link and delete the external victim. Fix: `verifyDestinationRoot` re-lstats the root (real, non-symlink directory) in the pre-verify pass AND immediately before each unlink; failure refuses the whole destination before any unlink. RED: victim deleted pre-fix.
+- P2 (live-reproduced): `cwd === home` made the default both-scopes plan produce two entries for the same destination — the first removed it, the second found files missing and reported blocked (exit 1). Fix: `mergeScopedDestinations` dedupes across scopes in `buildUninstallPlan` (union of targets, scopes in request order) and in `inspectInstallations` (status, same root cause); entry shape `scope` → `scopes` array; renderers print `[user, project]` for merged entries. Single-scope output byte-identical.
+- Evidence: suite 149 tests, 136 pass, 2 pre-existing fails, 11 skips; README `[scope]` wording updated for the merged form. Uncommitted pending user approval.
