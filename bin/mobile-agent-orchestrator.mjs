@@ -39,7 +39,9 @@ Status (strictly read-only):
     STATUS [scope] destination (targets)
 
   where STATUS is absent, managed, outdated, modified, or unknown, followed by indented detail
-  lines when a destination needs attention.
+  lines when a destination needs attention. When both scopes resolve to the same destination
+  (e.g. the working directory is the home directory), it is inspected once and reported with
+  both scopes: STATUS [user, project] destination (targets).
 
 Status options:
   --target <name>  Limit inspection to these targets; repeatable; defaults to all write targets.
@@ -56,6 +58,8 @@ Uninstall (removes only installer-managed content):
   locally modified managed file blocks its whole destination and nothing is removed there. Targets
   sharing one .agents/skills directory (codex, opencode, gemini) are installed as one copy and are
   removed as that single copy. By default BOTH scopes are planned; pass --scope to narrow it.
+  Destinations that both scopes resolve to (e.g. the working directory is the home directory)
+  are planned once and reported with both scopes: uninstall [user, project] destination.
 
 Uninstall options:
   --target <name>  Host target to uninstall for; repeatable; REQUIRED.
@@ -151,7 +155,7 @@ function expandSharedTargets(selectedTargets, { cwd, home }) {
  */
 function renderUninstallPlan(output, plan) {
   for (const entry of plan.destinations) {
-    output.write(`${entry.status} [${entry.scope}] ${entry.destination} (${entry.targets.join(", ")})\n`);
+    output.write(`${entry.status} [${entry.scopes.join(", ")}] ${entry.destination} (${entry.targets.join(", ")})\n`);
     for (const removal of entry.removals) output.write(`  - remove ${removal.destination}\n`);
     for (const directory of entry.directories) output.write(`  - remove directory ${directory}\n`);
     if (entry.manifestRemoved) output.write(`  - remove manifest ${entry.manifestPath}\n`);
@@ -346,7 +350,7 @@ export async function run(argv, options = {}) {
     }
     let attentionNeeded = false;
     for (const entry of entries) {
-      output.write(`${entry.status} [${entry.scope}] ${entry.destination} (${entry.targets.join(", ")})\n`);
+      output.write(`${entry.status} [${entry.scopes.join(", ")}] ${entry.destination} (${entry.targets.join(", ")})\n`);
       for (const detail of entry.details) output.write(`  - ${detail}\n`);
       if (entry.status === "outdated" || entry.status === "modified" || entry.status === "unknown") attentionNeeded = true;
     }
