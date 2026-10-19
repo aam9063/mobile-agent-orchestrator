@@ -19,7 +19,7 @@
 
 ---
 
-> **Status: stable v0.1.0.** Git tags—not npm publication—are the distribution channel. Review the source before installation: a Pi skill can guide system and network changes.
+> **Status: stable v0.1.0.** Distributed today via GitHub release tags; npm publication with provenance is wired into the release workflow and takes effect from the next stable release, pending the maintainer-side trusted-publisher confirmation — review the source before installation: a Pi skill can guide system and network changes.
 >
 > **Operational-evidence caveat.** Independently recorded cold-boot and live runtime evidence is not published for v0.1.0. Validate lifecycle and recovery on your target; this release does not claim observed macOS, WSL2, reboot, or mobile-client behavior.
 >
@@ -133,7 +133,15 @@ Codex, OpenCode, and Gemini CLI resolve the same shared `.agents/skills` locatio
 pi install git:github.com/egdev6/mobile-agent-orchestrator@v0.1.0
 ```
 
-Git tags—not npm publication—are this project's distribution channel. The release tag is created by automation after a validated release pull request merges; see the [release guide][release-guide] for the release conditions.
+Releases are distributed via GitHub tags: the release tag is created by automation after a validated release pull request merges. See the [release guide][release-guide] for the release conditions and publication semantics.
+
+#### Install from npm (next stable release onward)
+
+```bash
+pi install npm:mobile-agent-orchestrator
+```
+
+npm publication with provenance is wired into the release workflow and takes effect from the next stable release, pending the maintainer-side trusted-publisher confirmation: the publish job runs `npm publish --provenance` in the same workflow run that creates the release tag, so the package binds to `egdev6/mobile-agent-orchestrator` and its `tag-release.yml` workflow, with a rerun guard that never overwrites a published version and fails closed on integrity differences. For hosts that consume npm packages directly, `npx mobile-agent-orchestrator install` uses the same artifact once it is published.
 
 #### Source-review or development option: install from a local checkout
 
