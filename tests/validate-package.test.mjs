@@ -151,9 +151,5 @@ test("enforces the publishConfig registry/access policy and non-private package"
 });
 
 test("current repo package.json passes the publishConfig and private guard", () => {
-  const errors = collectPackageJsonErrors(repoPackageJson);
-  assert.deepEqual(
-    errors.filter((message) => /publishConfig|private/.test(message)),
-    [],
-  );
+  assert.deepEqual(collectPackageJsonErrors(repoPackageJson), []);
 });

@@ -50,6 +50,13 @@ Publish validated stable releases to npm with provenance while preserving the ex
   - Adversarial pass (jd-judge-a): 3 findings. JD-A-001 CRITICAL (FIXED): GITHUB_ENV case mismatch — writer emitted `local_integrity`, guard read `$LOCAL_INTEGRITY`; under `set -u` the rerun no-op and the fail-closed diagnostic crashed before converging (first-publish path unaffected). Fix: writer emits `LOCAL_INTEGRITY`; programmatic checker asserts all writer/reader pairs agree. JD-A-002 WARNING (FIXED): README claimed v0.1.0 was npm-published — impossible (release detection requires a version change; non-goal forbids the bump) and live probe shows the package absent from npm. Fix: prospective wording, Git tag as the current channel, npm block titled "next stable release onward". JD-A-003 = known pre-existing Windows detect-release failures (out of diff).
   - Verification: js-yaml parse OK; bash -n 4/4 publish-job run blocks; `git diff --check` clean; zero `${{ }}` inside run blocks; npm publish --dry-run exit 0 (13 canonical files); pack:check 0; suite 154/141/2/11. Uncommitted pending user approval.
 
+## Review round 1 (maintainer, PR)
+
+- Requerido (medio), FIXED: tarball integrity vs floating npm — tarball bytes change between npm 10 minors (npm/cli#7610) and `node-version: 22` floats, so a rerun could compare a different local integrity and turn a safe no-op into a false fail-closed (S6). Fix: publish job pins the FULL node version (`22.14.0`) with a comment explaining the npm/cli#7610 rationale; `docs/RELEASE.md` documents the pin-stability requirement. Validate/tag jobs keep their floating node (not integrity-sensitive).
+- Opcional 1, FIXED: E404 detection hardened from substring (`grep -q "E404"`) to structured line match (`grep -qE "npm error.* E404"`), per the maintainer's suggested pattern — rate-limit/auth/network errors (E429/E401/ENOTFOUND) cannot be misread as E404.
+- Opcional 2, FIXED: the "current repo package.json passes the publishConfig and private guard" test strengthened from a regex-filtered subset to `assert.deepEqual(collectPackageJsonErrors(repoPackageJson), [])` — full-coverage assertion.
+- Evidence: js-yaml parse OK; focused validator tests 10/10; full suite 154/141/2/11; `npm publish --dry-run` exit 0; `git diff --check` clean. Uncommitted pending user approval.
+
 ## Evidence log
 
 (filled per task)
