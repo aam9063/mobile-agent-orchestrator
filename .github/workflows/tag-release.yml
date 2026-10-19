@@ -214,3 +214,175 @@ jobs:
             echo "Tag ref API response was invalid or ambiguous." >&2
             exit 1
           }
+
+  # Publishes the validated stable release to npm with provenance (S4).
+  #
+  # Provenance (S1, maintainer-side prerequisite): `npm publish --provenance`
+  # signs the publish with an OIDC claim minted from this job's `id-token:
+  # write` permission, binding the tarball to this repository, workflow, and
+  # ref. npmjs.com therefore must have the repository's trusted-publisher
+  # configuration (owner/repo + workflow filename "tag-release.yml") before
+  # this job can succeed. Because GitHub-created tags use GITHUB_TOKEN, the
+  # publish is integrated into this same workflow run (S5) instead of a
+  # tag-triggered second workflow.
+  #
+  # Node 22 ships npm 10.x, which still requires registry credentials, so the
+  # publish step reads the maintainer-configured NODE_AUTH_TOKEN secret
+  # (a granular automation token for mobile-agent-orchestrator).
+  # Upgrading this job to Node 24 (npm >= 11.5.1) would enable fully tokenless
+  # trusted publishing via the same id-token OIDC claim.
+  #
+  # Idempotency (S6/S7): the rerun guard compares the registry's stored
+  # dist.integrity for mobile-agent-orchestrator@$VERSION against the local
+  # tarball's integrity. A rerun of an already-published identical version is
+  # a safe no-op (publish step skipped); an existing version with different
+  # content fails closed instead of overwriting anything.
+  publish:
+    name: Publish to npm
+    needs: [validate, tag]
+    if: needs.validate.outputs.should_tag == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+      - name: Re-verify the release tag points at the merged commit
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version '$VERSION' is not a stable semver release; refusing to publish." >&2
+            exit 1
+          fi
+          tag="v$VERSION"
+          existing_refs_json="$(gh api --method GET \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag")" || {
+            echo "Could not determine whether tag $tag exists." >&2
+            exit 1
+          }
+          tag_object_sha="$(printf '%s' "$existing_refs_json" | TAG="$tag" node -e '
+            let input = "";
+            process.stdin.on("data", (chunk) => input += chunk).on("end", () => {
+              const refs = JSON.parse(input);
+              if (!Array.isArray(refs)) throw new Error("matching refs API response is not an array");
+              const matches = refs.filter((ref) => ref?.ref === `refs/tags/${process.env.TAG}`);
+              if (matches.length > 1) throw new Error("matching refs API response has duplicate exact tag refs");
+              if (matches.length === 0) throw new Error(`tag ${process.env.TAG} does not exist`);
+              const object = matches[0].object;
+              if (object?.type !== "tag" || typeof object.sha !== "string" || !/^[0-9a-f]{40}$/i.test(object.sha)) {
+                throw new Error("tag ref does not target an annotated tag object");
+              }
+              console.log(object.sha);
+            });')" || {
+            echo "Tag $tag is missing or its ref lookup was invalid or ambiguous." >&2
+            exit 1
+          }
+          tag_json="$(gh api --method GET \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/git/tags/$tag_object_sha")" || {
+              echo "Could not inspect annotated tag object for $tag." >&2
+              exit 1
+            }
+          printf '%s' "$tag_json" | TAG="$tag" GITHUB_SHA="$GITHUB_SHA" node -e '
+            let input = "";
+            process.stdin.on("data", (chunk) => input += chunk).on("end", () => {
+              const tagObject = JSON.parse(input);
+              if (tagObject.tag !== process.env.TAG || tagObject.object?.type !== "commit" || tagObject.object?.sha !== process.env.GITHUB_SHA) {
+                throw new Error("annotated tag does not peel to the merged commit");
+              }
+            });' || {
+            echo "Refusing to publish: tag $tag is not the expected annotated tag at $GITHUB_SHA." >&2
+            exit 1
+          }
+      - name: Compute local tarball integrity
+        run: |
+          set -euo pipefail
+          # Empirically verified (npm 10.9.x and npm 11.16.0): `npm pack
+          # --dry-run --json` exposes an `integrity` field per tarball entry,
+          # identical to the integrity of a real `npm pack` tarball. The
+          # dry-run therefore avoids creating a real tarball in a temp dir and
+          # recomputing sha512-<base64> with node:crypto. The field is still
+          # strictly validated, so any older npm that omits it fails closed.
+          pack_json="$(npm pack --dry-run --json)"
+          local_integrity="$(printf '%s' "$pack_json" | node -e '
+            let input = "";
+            process.stdin.on("data", (chunk) => input += chunk).on("end", () => {
+              const packs = JSON.parse(input);
+              if (!Array.isArray(packs) || packs.length !== 1) {
+                throw new Error("npm pack output is not a single-entry array");
+              }
+              const pack = packs[0];
+              if (pack?.name !== "mobile-agent-orchestrator" || typeof pack.integrity !== "string" || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(pack.integrity)) {
+                throw new Error("npm pack dry-run output has no usable sha512 integrity");
+              }
+              console.log(pack.integrity);
+            });')" || {
+            echo "Could not determine the local tarball integrity; refusing to publish." >&2
+            exit 1
+          }
+          printf 'LOCAL_INTEGRITY=%s\n' "$local_integrity" >> "$GITHUB_ENV"
+      - id: rerun-guard
+        name: Guard against overwriting an already published version
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          registry_output="$(mktemp)"
+          registry_error="$(mktemp)"
+          trap 'rm -f "$registry_output" "$registry_error"' EXIT
+          exit_code=0
+          npm view "mobile-agent-orchestrator@$VERSION" dist.integrity --json \
+            >"$registry_output" 2>"$registry_error" || exit_code=$?
+          if [[ "$exit_code" -ne 0 ]]; then
+            if grep -q "E404" "$registry_output" "$registry_error"; then
+              echo "Version $VERSION is not published yet; proceeding with publication."
+              printf 'should_publish=true\n' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "npm view failed with an unexpected error (exit code $exit_code); refusing to publish on an unknown registry state." >&2
+            cat "$registry_output" >&2 || true
+            cat "$registry_error" >&2 || true
+            exit 1
+          fi
+          registry_integrity="$(cat "$registry_output" | node -e '
+            let input = "";
+            process.stdin.on("data", (chunk) => input += chunk).on("end", () => {
+              const integrity = JSON.parse(input);
+              if (typeof integrity !== "string" || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(integrity)) {
+                throw new Error("registry integrity is not a usable sha512 string");
+              }
+              console.log(integrity);
+            });')" || {
+            echo "Registry returned an invalid integrity for $VERSION; refusing to publish on an unknown registry state." >&2
+            exit 1
+          }
+          if [[ "$registry_integrity" == "$LOCAL_INTEGRITY" ]]; then
+            echo "Version $VERSION is already published with the same integrity; rerun is a safe no-op and publication is skipped."
+            printf 'should_publish=false\n' >> "$GITHUB_OUTPUT"
+          else
+            echo "Refusing to publish $VERSION: it already exists with different content." >&2
+            echo "Local integrity:   $LOCAL_INTEGRITY" >&2
+            echo "Registry integrity: $registry_integrity" >&2
+            exit 1
+          fi
+      - name: Publish to npm with provenance
+        if: steps.rerun-guard.outputs.should_publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm publish --provenance
