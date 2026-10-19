@@ -253,7 +253,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          # Pinned full version: the rerun guard compares this job's local tarball
+          # integrity against the registry's, and tarball bytes can change between
+          # npm minors (npm/cli#7610). A floating node-version could change the
+          # bundled npm between the original publish and a rerun, turning a safe
+          # no-op into a false fail-closed. Keep this pin and node's bundled npm
+          # stable across the life of a published version.
+          node-version: 22.14.0
           registry-url: https://registry.npmjs.org/
       - name: Re-verify the release tag points at the merged commit
         env:
@@ -348,7 +354,7 @@ jobs:
           npm view "mobile-agent-orchestrator@$VERSION" dist.integrity --json \
             >"$registry_output" 2>"$registry_error" || exit_code=$?
           if [[ "$exit_code" -ne 0 ]]; then
-            if grep -q "E404" "$registry_output" "$registry_error"; then
+            if grep -qE "npm error.* E404" "$registry_output" "$registry_error"; then
               echo "Version $VERSION is not published yet; proceeding with publication."
               printf 'should_publish=true\n' >> "$GITHUB_OUTPUT"
               exit 0

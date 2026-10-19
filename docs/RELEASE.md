@@ -35,6 +35,8 @@ The `publish` job runs only when the tag job succeeded, and it re-verifies defen
 
 The job's permissions are least-privilege: `contents: read` and `id-token: write` (the OIDC claim that binds the provenance attestation to this repository, workflow, and ref). Publication failure does not invalidate the tag; fixing the cause and re-running the workflow publishes the same validated revision.
 
+The publish job pins its full Node version (`22.14.0`, not a floating `22`) because the rerun guard compares the local tarball integrity against the registry's, and tarball bytes can change between npm minors (npm/cli#7610): a floating `node-version` could change the bundled npm between the original publish and a rerun, turning a safe no-op into a false fail-closed. Keep this pin stable for the life of any published version.
+
 ## Guardrails
 
 - Prerelease versions such as `0.1.0-dev.0` are never tagged.
