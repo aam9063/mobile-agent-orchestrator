@@ -20,4 +20,4 @@ Stable releases must remove the README draft marker and replace its `vX.Y.Z` fut
 
 ## Scope
 
-GitHub tags are the distribution channel. npm publication is out of scope. See the [release guide](docs/RELEASE.md) and [security policy](SECURITY.md).
+Stable releases are published to npm with provenance and tagged on GitHub. The publication runs inside the release workflow after the tag exists; see the [release guide](docs/RELEASE.md) for the trusted-publishing prerequisites and the [security policy](SECURITY.md).

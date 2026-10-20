@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,6 +14,7 @@ import {
   discoverPackageInventory,
   parseSemVer,
   parseSkillFrontmatter,
+  validatePackageJson,
   validatePublishedInventory,
   validateRequiredSections,
   publishedTopLevelPaths,
@@ -100,4 +101,55 @@ test("expands recursively allowlisted non-skill directories", () => {
   } finally {
     rmSync(packageRoot, { recursive: true, force: true });
   }
+});
+
+const repoPackageJson = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
+const packageJsonFixture = () => ({
+  ...structuredClone(repoPackageJson),
+  publishConfig: { registry: "https://registry.npmjs.org/", access: "public" },
+});
+
+function collectPackageJsonErrors(packageJson) {
+  const errors = [];
+  validatePackageJson(packageJson, (message) => errors.push(message));
+  return errors;
+}
+
+test("enforces the publishConfig registry/access policy and non-private package", () => {
+  const missingPublishConfig = packageJsonFixture();
+  delete missingPublishConfig.publishConfig;
+  assert.match(collectPackageJsonErrors(missingPublishConfig).join("\n"), /publishConfig must be an object/);
+
+  const wrongRegistry = packageJsonFixture();
+  wrongRegistry.publishConfig.registry = "https://registry.npmmirror.com/";
+  assert.match(
+    collectPackageJsonErrors(wrongRegistry).join("\n"),
+    /publishConfig\.registry must be https:\/\/registry\.npmjs\.org\//,
+  );
+
+  const restrictedAccess = packageJsonFixture();
+  restrictedAccess.publishConfig.access = "restricted";
+  assert.match(collectPackageJsonErrors(restrictedAccess).join("\n"), /publishConfig\.access must be public/);
+
+  const extraKey = packageJsonFixture();
+  extraKey.publishConfig.tag = "latest";
+  assert.match(collectPackageJsonErrors(extraKey).join("\n"), /publishConfig must contain exactly the keys/);
+
+  const stringPublishConfig = packageJsonFixture();
+  stringPublishConfig.publishConfig = "public";
+  assert.match(collectPackageJsonErrors(stringPublishConfig).join("\n"), /publishConfig must be an object/);
+
+  const arrayPublishConfig = packageJsonFixture();
+  arrayPublishConfig.publishConfig = ["registry"];
+  assert.match(collectPackageJsonErrors(arrayPublishConfig).join("\n"), /publishConfig must be an object/);
+
+  const privatePackage = packageJsonFixture();
+  privatePackage.private = true;
+  assert.match(collectPackageJsonErrors(privatePackage).join("\n"), /private/);
+});
+
+test("current repo package.json passes the publishConfig and private guard", () => {
+  assert.deepEqual(collectPackageJsonErrors(repoPackageJson), []);
 });

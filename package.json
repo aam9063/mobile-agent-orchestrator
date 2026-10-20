@@ -4,6 +4,10 @@
   "description": "A guided Agent Skill for a private, recoverable mobile AI-agent environment.",
   "license": "MIT",
   "private": false,
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "author": "egdev6",
   "repository": {
     "type": "git",

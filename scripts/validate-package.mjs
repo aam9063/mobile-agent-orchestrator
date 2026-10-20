@@ -369,25 +369,10 @@ function validateTarball(packageName, fail) {
   }
 }
 
-function validatePackage() {
-  const errors = [];
-  const fail = (message) => errors.push(message);
-  const packagePath = resolve(root, "package.json");
-  const skillPath = resolve(root, canonicalSkillPath);
-  const changelogPath = resolve(root, "CHANGELOG.md");
-  const readmePath = resolve(root, "README.md");
-  let packageJson = null;
-
-  try {
-    packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
-  } catch (error) {
-    fail(`package.json must contain valid JSON: ${error.message}`);
-  }
-
-  if (packageJson) {
-    const expectedRepository = "https://github.com/egdev6/mobile-agent-orchestrator";
-    const version = parseSemVer(packageJson.version);
-    if (packageJson.name !== "mobile-agent-orchestrator") fail("package.json name must be mobile-agent-orchestrator.");
+export function validatePackageJson(packageJson, fail) {
+  const expectedRepository = "https://github.com/egdev6/mobile-agent-orchestrator";
+  const version = parseSemVer(packageJson.version);
+  if (packageJson.name !== "mobile-agent-orchestrator") fail("package.json name must be mobile-agent-orchestrator.");
     if (typeof packageJson.description !== "string" || !packageJson.description.trim()) fail("package.json must include a non-empty description.");
     if (packageJson.license !== "MIT") fail("package.json license must be MIT.");
     if (!version) fail(`package.json version must be valid SemVer; received ${JSON.stringify(packageJson.version)}.`);
@@ -409,17 +394,52 @@ function validatePackage() {
     if (!Array.isArray(packageJson.keywords) || requiredKeywords.some((keyword) => !packageJson.keywords.includes(keyword))) {
       fail("package.json keywords must preserve the Pi and mobile-agent discovery terms.");
     }
-    if (!Array.isArray(packageJson.pi?.skills) || packageJson.pi.skills.length === 0) {
-      fail("package.json pi.skills must be a non-empty array.");
-    } else {
-      for (const target of packageJson.pi.skills) {
-        const resolvedTarget = typeof target === "string" ? resolve(root, target) : "";
-        const targetRelative = resolvedTarget && relative(root, resolvedTarget);
-        if (typeof target !== "string" || targetRelative === ".." || targetRelative.startsWith(`..${sep}`) || !existsSync(resolvedTarget)) {
-          fail(`package.json pi.skills target does not exist inside the package: ${JSON.stringify(target)}.`);
-        }
+  if (packageJson.private) fail("package.json private must be false or absent; the package must be publishable.");
+  const publishConfig = packageJson.publishConfig;
+  if (typeof publishConfig !== "object" || publishConfig === null || Array.isArray(publishConfig)) {
+    fail('package.json publishConfig must be an object with registry https://registry.npmjs.org/ and access public.');
+  } else {
+    const keys = Object.keys(publishConfig);
+    if (keys.length !== 2 || !keys.includes("registry") || !keys.includes("access")) {
+      fail('package.json publishConfig must contain exactly the keys "registry" and "access".');
+    }
+    if (publishConfig.registry !== "https://registry.npmjs.org/") {
+      fail("package.json publishConfig.registry must be https://registry.npmjs.org/.");
+    }
+    if (publishConfig.access !== "public") {
+      fail("package.json publishConfig.access must be public.");
+    }
+  }
+  if (!Array.isArray(packageJson.pi?.skills) || packageJson.pi.skills.length === 0) {
+    fail("package.json pi.skills must be a non-empty array.");
+  } else {
+    for (const target of packageJson.pi.skills) {
+      const resolvedTarget = typeof target === "string" ? resolve(root, target) : "";
+      const targetRelative = resolvedTarget && relative(root, resolvedTarget);
+      if (typeof target !== "string" || targetRelative === ".." || targetRelative.startsWith(`..${sep}`) || !existsSync(resolvedTarget)) {
+        fail(`package.json pi.skills target does not exist inside the package: ${JSON.stringify(target)}.`);
       }
     }
+  }
+}
+
+function validatePackage() {
+  const errors = [];
+  const fail = (message) => errors.push(message);
+  const packagePath = resolve(root, "package.json");
+  const skillPath = resolve(root, canonicalSkillPath);
+  const changelogPath = resolve(root, "CHANGELOG.md");
+  const readmePath = resolve(root, "README.md");
+  let packageJson = null;
+
+  try {
+    packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+  } catch (error) {
+    fail(`package.json must contain valid JSON: ${error.message}`);
+  }
+
+  if (packageJson) {
+    validatePackageJson(packageJson, fail);
   }
 
   try {
