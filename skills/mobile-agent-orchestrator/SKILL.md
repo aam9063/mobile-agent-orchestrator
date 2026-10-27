@@ -4,7 +4,7 @@ description: "Trigger: mobile agent setup, mobile orchestrator, Moshi, Mosh, Tai
 license: MIT
 metadata:
   author: egdev6
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 ## Activation Contract

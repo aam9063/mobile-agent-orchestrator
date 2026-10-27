@@ -13,15 +13,15 @@
     <a href="https://github.com/egdev6/mobile-agent-orchestrator/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/egdev6/mobile-agent-orchestrator/ci.yml?branch=main&amp;label=package%20CI&amp;style=for-the-badge" alt="Package CI"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License"></a>
     <a href="https://pi.dev"><img src="https://img.shields.io/badge/Pi-package-7c3aed?style=for-the-badge" alt="Pi package"></a>
-    <img src="https://img.shields.io/badge/status-v0.1.0-brightgreen?style=for-the-badge" alt="Stable v0.1.0 status">
+    <img src="https://img.shields.io/badge/status-v0.2.0-brightgreen?style=for-the-badge" alt="Stable v0.2.0 status">
   </p>
 </div>
 
 ---
 
-> **Status: stable v0.1.0.** Distributed today via GitHub release tags; npm publication with provenance is wired into the release workflow and takes effect from the next stable release, pending the maintainer-side trusted-publisher confirmation — review the source before installation: a Pi skill can guide system and network changes.
+> **Status: stable v0.2.0.** Published to npm with provenance; GitHub release tags remain the source-review channel — review the source before installation: a Pi skill can guide system and network changes.
 >
-> **Operational-evidence caveat.** Independently recorded cold-boot and live runtime evidence is not published for v0.1.0. Validate lifecycle and recovery on your target; this release does not claim observed macOS, WSL2, reboot, or mobile-client behavior.
+> **Operational-evidence caveat.** Independently recorded cold-boot and live runtime evidence is not published for v0.2.0. Validate lifecycle and recovery on your target; this release does not claim observed macOS, WSL2, reboot, or mobile-client behavior.
 >
 > **BASED ON** https://www.youtube.com/watch?v=Yj51wXMwFwE&t=907s
 
@@ -127,21 +127,21 @@ Codex, OpenCode, and Gemini CLI resolve the same shared `.agents/skills` locatio
 
 ### Pi
 
-#### Recommended: install stable v0.1.0 from Git
+#### Install stable v0.2.0 from Git
 
 ```bash
-pi install git:github.com/egdev6/mobile-agent-orchestrator@v0.1.0
+pi install git:github.com/egdev6/mobile-agent-orchestrator@v0.2.0
 ```
 
-Releases are distributed via GitHub tags: the release tag is created by automation after a validated release pull request merges. See the [release guide][release-guide] for the release conditions and publication semantics.
+Stable releases are distributed via GitHub tags: the release tag is created by automation after a validated release pull request merges. See the [release guide][release-guide] for the release conditions and publication semantics.
 
-#### Install from npm (next stable release onward)
+#### Recommended: install stable v0.2.0 from npm
 
 ```bash
 pi install npm:mobile-agent-orchestrator
 ```
 
-npm publication with provenance is wired into the release workflow and takes effect from the next stable release, pending the maintainer-side trusted-publisher confirmation: the publish job runs `npm publish --provenance` in the same workflow run that creates the release tag, so the package binds to `egdev6/mobile-agent-orchestrator` and its `tag-release.yml` workflow, with a rerun guard that never overwrites a published version and fails closed on integrity differences. For hosts that consume npm packages directly, `npx mobile-agent-orchestrator install` uses the same artifact once it is published.
+The package is published with provenance from the release workflow: the publish job runs `npm publish --provenance` in the same workflow run that creates the release tag, so the package binds to `egdev6/mobile-agent-orchestrator` and its `tag-release.yml` workflow, with a rerun guard that never overwrites a published version and fails closed on integrity differences. For hosts that consume npm packages directly, `npx mobile-agent-orchestrator install` uses the same artifact.
 
 #### Source-review or development option: install from a local checkout
 
@@ -237,7 +237,7 @@ Tailscale, OpenSSH, Mosh, Moshi, `moshi-hook`, Herdr, tmux, and platform lifecyc
 
 After each approved mutation, the workflow captures non-sensitive evidence for the private overlay, key-authenticated SSH, Mosh reconnection, session host, checkpoints, integrations, and notifications. A missing component or failed check is a finding—not authorization to make another change.
 
-Before an approved reboot, the guide states that live processes will die, confirms recovery and rollback paths, then checks the actual post-reboot state. Herdr and tmux do not preserve live processes across a physical reboot. A host may provide its own persisted checkpoint or resume mechanism; only Pi's supported JSONL behavior is described here, and no equivalent is claimed for other CLIs. Independently recorded cold-boot and live runtime evidence is not published for v0.1.0, so validate lifecycle and recovery on your target.
+Before an approved reboot, the guide states that live processes will die, confirms recovery and rollback paths, then checks the actual post-reboot state. Herdr and tmux do not preserve live processes across a physical reboot. A host may provide its own persisted checkpoint or resume mechanism; only Pi's supported JSONL behavior is described here, and no equivalent is claimed for other CLIs. Independently recorded cold-boot and live runtime evidence is not published for v0.2.0, so validate lifecycle and recovery on your target.
 
 Read the full [verification and recovery guide][verification-recovery] before applying lifecycle or rollback changes.
 
