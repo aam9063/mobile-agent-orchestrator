@@ -34,7 +34,6 @@ Nature: release-only work unit. No new installer/skill behavior, no new hosts, n
 - [x] T3: commits approved by the user, pushed as 32dc408; PR body delivered and opened by the user.
 - [ ] T4 (post-merge): verify tag + npm publication from the same revision (S10).
 
-### T1 release edits (writer)
 
 ## Evidence log
 
