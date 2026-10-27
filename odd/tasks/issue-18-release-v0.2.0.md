@@ -1,7 +1,7 @@
 # Issue #18 — Prepare and verify the stable `v0.2.0` release
 
 Issue: egdev6/mobile-agent-orchestrator#18 "Prepare the v0.2.0 multi-CLI installer release" (status:approved; all blockers #7, #9, #10, #11-#17 merged).
-Branch: `chore/release-v0.2.0` (release-type branch; NO commits without explicit user approval — commit-approval-policy).
+Branch: `chore/release-v0.2.0` (release-type branch).
 Nature: release-only work unit. No new installer/skill behavior, no new hosts, no unrelated refactors.
 
 ## Specs (issue verbatim)
@@ -29,10 +29,12 @@ Nature: release-only work unit. No new installer/skill behavior, no new hosts, n
 
 ## Tasks
 
-- [ ] T1: release edits (package.json, SKILL.md, CHANGELOG.md, README.md) — writer; validator green except known Windows npm-ENOENT.
-- [ ] T2: parent verification battery (S4-S9) incl. temporary installs and Pi load test.
-- [ ] T3: commits ON USER APPROVAL, PR body, user opens release PR.
+- [x] T1: release edits (package.json, SKILL.md, CHANGELOG.md, README.md) — writer; validator green except known Windows npm-ENOENT.
+- [x] T2: parent verification battery (S4-S9) incl. temporary installs and Pi load test.
+- [x] T3: commits approved by the user, pushed as 32dc408; PR body delivered and opened by the user.
 - [ ] T4 (post-merge): verify tag + npm publication from the same revision (S10).
+
+### T1 release edits (writer)
 
 ## Evidence log
 
